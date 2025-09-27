@@ -1,0 +1,135 @@
+# LoadTester .gitignore
+
+# Environment and secrets
+.env
+.env.local
+.env.production
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.uv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.coverage
+.pytest_cache/
+.cache
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated data and reports
+shared/data/uploads/*
+!shared/data/uploads/.gitkeep
+shared/data/mocked/*
+!shared/data/mocked/.gitkeep
+shared/reports/generated/*
+!shared/reports/generated/.gitkeep
+shared/database/*
+!shared/database/.gitkeep
+
+# K6 generated files
+k6/scripts/generated/*
+!k6/scripts/generated/.gitkeep
+k6/results/generated/*
+!k6/results/generated/.gitkeep
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Docker
+.dockerignore
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Archives
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Application specific
+*.pdf
+!docs/*.pdf
+
+# AI model caches
+.cache/
+.anthropic/
+.openai/
+
+# Backup files
+*.bak
+*.backup

@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  # Backend FastAPI Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: loadtester-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./shared/database:/app/data
+      - ./shared/data:/app/shared/data
+      - ./shared/reports:/app/shared/reports
+      - ./k6/scripts/generated:/app/k6_scripts
+      - ./k6/results/generated:/app/k6_results
+    environment:
+      - DATABASE_URL=sqlite:///data/loadtester.db
+      - K6_SCRIPTS_PATH=/app/k6_scripts
+      - K6_RESULTS_PATH=/app/k6_results
+      - UPLOAD_PATH=/app/shared/data/uploads
+      - REPORTS_PATH=/app/shared/reports/generated
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LOG_LEVEL=INFO
+      - DEGRADATION_RESPONSE_TIME_MULTIPLIER=5.0
+      - DEGRADATION_ERROR_RATE_THRESHOLD=0.5
+      - DEFAULT_TEST_DURATION=60
+      - MAX_FILE_SIZE=10485760  # 10MB
+    depends_on:
+      - k6
+    networks:
+      - loadtester-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Streamlit Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: loadtester-frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+    depends_on:
+      - backend
+    networks:
+      - loadtester-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # K6 Load Testing Service
+  k6:
+    image: grafana/k6:latest
+    container_name: loadtester-k6
+    volumes:
+      - ./k6/scripts:/scripts
+      - ./k6/results:/results
+    networks:
+      - loadtester-network
+    # K6 will be controlled by backend service, not run continuously
+    entrypoint: ["sleep", "infinity"]
+    restart: unless-stopped
+
+  # Optional: Redis for caching and job queue (future enhancement)
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: loadtester-redis
+  #   ports:
+  #     - "6379:6379"
+  #   networks:
+  #     - loadtester-network
+  #   restart: unless-stopped
+
+networks:
+  loadtester-network:
+    driver: bridge
+    name: loadtester-network
+
+volumes:
+  # Persistent volume for SQLite database
+  database-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./shared/database
+  
+  # Shared volumes for data exchange
+  shared-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./shared/data
+  
+  reports-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./shared/reports
+  
+  k6-scripts:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./k6/scripts
+  
+  k6-results:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./k6/results

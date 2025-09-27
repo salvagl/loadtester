@@ -1,0 +1,28 @@
+# Frontend Requirements for LoadTester Streamlit App
+
+# Core Streamlit
+streamlit>=1.28.0
+streamlit-option-menu>=0.3.6
+
+# HTTP Client
+requests>=2.31.0
+httpx>=0.25.2
+
+# Data Handling
+pandas>=2.1.0
+numpy>=1.24.0
+
+# JSON/YAML Processing
+pyyaml>=6.0.1
+jsonschema>=4.20.0
+
+# File Handling
+python-multipart>=0.0.6
+
+# UI Components
+plotly>=5.17.0
+streamlit-aggrid>=0.3.4
+
+# Utilities
+python-dateutil>=2.8.2
+validators>=0.22.0
