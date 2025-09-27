@@ -17,6 +17,8 @@ services:
       - ./k6/results/generated:/app/k6_results
     environment:
       - DATABASE_URL=sqlite:///data/loadtester.db
+      - HOST_UID=${HOST_UID:-1000}
+      - HOST_GID=${HOST_GID:-1000}
       - K6_SCRIPTS_PATH=/app/k6_scripts
       - K6_RESULTS_PATH=/app/k6_results
       - UPLOAD_PATH=/app/shared/data/uploads

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Entrypoint script for LoadTester Backend
-# This script ensures proper permissions for data directories
+# This script ensures proper permissions for data directories and handles volume mounting
 
 set -e
 
@@ -23,17 +23,33 @@ mkdir -p /app/k6_results
 if [ "$(id -u)" = "0" ]; then
     echo "Running as root, fixing permissions..."
 
+    # Get the user ID and group ID from the host (if available)
+    HOST_UID=${HOST_UID:-1000}
+    HOST_GID=${HOST_GID:-1000}
+
+    # Update appuser to match host UID/GID for better volume mounting
+    usermod -u $HOST_UID appuser 2>/dev/null || true
+    groupmod -g $HOST_GID appuser 2>/dev/null || true
+
     # Change ownership of data directories to appuser
     chown -R appuser:appuser /app/data
     chown -R appuser:appuser /app/shared
     chown -R appuser:appuser /app/k6_scripts
     chown -R appuser:appuser /app/k6_results
 
-    # Ensure directories are writable
-    chmod -R 755 /app/data
-    chmod -R 755 /app/shared
-    chmod -R 755 /app/k6_scripts
-    chmod -R 755 /app/k6_results
+    # Ensure directories are writable with more permissive permissions for volume mounting
+    chmod -R 775 /app/data
+    chmod -R 775 /app/shared
+    chmod -R 775 /app/k6_scripts
+    chmod -R 775 /app/k6_results
+
+    # Special handling for database file to ensure it's created with correct permissions
+    if [ ! -f /app/data/loadtester.db ]; then
+        echo "Creating database file with correct permissions..."
+        touch /app/data/loadtester.db
+        chown appuser:appuser /app/data/loadtester.db
+        chmod 664 /app/data/loadtester.db
+    fi
 
     echo "Permissions fixed. Switching to appuser..."
     # Switch to appuser and execute the original command
