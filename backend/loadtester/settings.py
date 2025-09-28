@@ -92,6 +92,12 @@ class Settings(BaseSettings):
     google_api_key: Optional[str] = Field(default=None, env="GOOGLE_API_KEY")
     anthropic_api_key: Optional[str] = Field(default=None, env="ANTHROPIC_API_KEY")
     openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
+
+    # OpenAPI Parsing Configuration
+    use_local_openapi_parsing: bool = Field(
+        default=False,
+        env="USE_LOCAL_OPENAPI_PARSING"
+    )
     
     # Security
     secret_key: str = Field(

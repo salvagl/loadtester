@@ -9,7 +9,10 @@
       "Bash(sed:*)",
       "Bash(docker-compose restart:*)",
       "Bash(docker-compose logs:*)",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "WebSearch",
+      "Bash(curl:*)",
+      "Bash(docker-compose:*)"
     ],
     "deny": [],
     "ask": []

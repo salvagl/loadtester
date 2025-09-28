@@ -103,8 +103,8 @@ class MultiProviderAIClient(AIClientInterface):
             raise ExternalServiceError("Google API key not available")
         
         # Use Google Generative AI REST API
-        model_name = model or "gemini-pro"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+        model_name = model or "gemini-2.0-flash"
+        url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent"
         
         # Convert messages to Google format
         contents = []
@@ -221,62 +221,124 @@ class OpenAPIParserService:
     
     async def parse_openapi_spec(self, spec_content: str) -> Dict:
         """Parse OpenAPI specification using AI."""
-        prompt = f"""
-        Please parse the following OpenAPI specification and extract key information.
-        Return a JSON response with the following structure:
-        {{
-            "info": {{"title": "API Title", "description": "Description", "version": "1.0.0"}},
-            "servers": [{{"url": "https://api.example.com"}}],
-            "paths": {{}},
-            "components": {{}}
-        }}
-        
-        OpenAPI Spec:
-        {spec_content[:8000]}  # Limit to avoid token limits
-        
-        Only return valid JSON, no explanations.
-        """
+        prompt = f"""You are a JSON parser. Parse this OpenAPI specification and return ONLY a JSON object.
+
+IMPORTANT: Return ONLY the JSON object, no explanations, no markdown, no text before or after.
+
+Expected JSON structure:
+{{
+    "info": {{"title": "string", "description": "string", "version": "string"}},
+    "servers": [{{ "url": "string" }}],
+    "paths": {{}},
+    "components": {{}}
+}}
+
+OpenAPI Specification to parse:
+{spec_content[:8000]}
+
+Return only JSON:"""
         
         messages = [{"role": "user", "content": prompt}]
         response = await self.ai_client.chat_completion(messages)
         
+        import json
+        import re
+
         try:
-            import json
-            return json.loads(response)
-        except json.JSONDecodeError:
-            raise ExternalServiceError("AI returned invalid JSON for OpenAPI parsing")
+            # Try to parse response directly first
+            try:
+                return json.loads(response)
+            except json.JSONDecodeError:
+                # If direct parsing fails, try to extract JSON from the response
+                # Look for JSON blocks in the response
+                json_patterns = [
+                    r'```json\s*(.*?)\s*```',  # JSON in code blocks
+                    r'```\s*(.*?)\s*```',      # Any code blocks
+                    r'\{.*\}',                 # Any object that looks like JSON
+                ]
+
+                for pattern in json_patterns:
+                    matches = re.findall(pattern, response, re.DOTALL)
+                    for match in matches:
+                        try:
+                            return json.loads(match.strip())
+                        except json.JSONDecodeError:
+                            continue
+
+                # If all else fails, log the response for debugging
+                logger.error(f"AI response that failed to parse: {response[:500]}...")
+                raise ExternalServiceError(f"AI returned invalid JSON for OpenAPI parsing. Response: {response[:200]}...")
+        except Exception as e:
+            if isinstance(e, ExternalServiceError):
+                raise
+            raise ExternalServiceError(f"Error parsing AI response: {str(e)}")
     
     async def extract_endpoints(self, parsed_spec: Dict) -> List[Dict]:
         """Extract endpoints from parsed OpenAPI spec."""
-        prompt = f"""
-        Extract all endpoints from this OpenAPI specification.
-        Return a JSON array with this structure:
-        [
-            {{
-                "path": "/users/{{id}}",
-                "method": "GET",
-                "summary": "Get user by ID",
-                "description": "Retrieves a user by their ID",
-                "parameters": [],
-                "requestBody": null,
-                "responses": {{}}
-            }}
-        ]
-        
-        OpenAPI Spec:
-        {json.dumps(parsed_spec, indent=2)[:6000]}
-        
-        Only return the JSON array, no explanations.
-        """
+        import json
+
+        prompt = f"""You are a JSON extractor. Extract endpoints from this OpenAPI specification and return ONLY a JSON array.
+
+IMPORTANT: Return ONLY the JSON array, no explanations, no markdown, no text before or after.
+IMPORTANT: Do not use null values. Use empty string "" for missing text fields and empty object {{}} for missing objects.
+
+Expected array structure:
+[
+    {{
+        "path": "/users/{{id}}",
+        "method": "GET",
+        "summary": "Get user by ID",
+        "description": "Retrieves a user by their ID",
+        "parameters": [],
+        "requestBody": {{}},
+        "responses": {{}}
+    }}
+]
+
+OpenAPI Specification:
+{json.dumps(parsed_spec, indent=2)[:6000]}
+
+Return only JSON array:"""
         
         messages = [{"role": "user", "content": prompt}]
         response = await self.ai_client.chat_completion(messages)
         
+        import json
+        import re
+
         try:
-            import json
-            return json.loads(response)
-        except json.JSONDecodeError:
-            raise ExternalServiceError("AI returned invalid JSON for endpoint extraction")
+            # Try to parse response directly first
+            try:
+                parsed_data = json.loads(response)
+                # Log the parsed data for debugging
+                logger.debug(f"Parsed endpoints data: {json.dumps(parsed_data, indent=2)[:1000]}...")
+                return parsed_data
+            except json.JSONDecodeError:
+                # If direct parsing fails, try to extract JSON from the response
+                json_patterns = [
+                    r'```json\s*(.*?)\s*```',  # JSON in code blocks
+                    r'```\s*(.*?)\s*```',      # Any code blocks
+                    r'\[.*\]',                 # Any array that looks like JSON
+                ]
+
+                for pattern in json_patterns:
+                    matches = re.findall(pattern, response, re.DOTALL)
+                    for match in matches:
+                        try:
+                            parsed_data = json.loads(match.strip())
+                            # Log the parsed data for debugging
+                            logger.debug(f"Parsed endpoints data from pattern: {json.dumps(parsed_data, indent=2)[:1000]}...")
+                            return parsed_data
+                        except json.JSONDecodeError:
+                            continue
+
+                # If all else fails, log the response for debugging
+                logger.error(f"AI response that failed to parse for endpoints: {response[:500]}...")
+                raise ExternalServiceError(f"AI returned invalid JSON for endpoint extraction. Response: {response[:200]}...")
+        except Exception as e:
+            if isinstance(e, ExternalServiceError):
+                raise
+            raise ExternalServiceError(f"Error parsing AI response for endpoints: {str(e)}")
     
     async def validate_spec(self, spec_content: str) -> bool:
         """Validate OpenAPI specification format."""
@@ -294,12 +356,14 @@ class OpenAPIParserService:
         return response.strip().lower() == "true"
     
     async def get_endpoint_schema(
-        self, 
-        parsed_spec: Dict, 
-        path: str, 
+        self,
+        parsed_spec: Dict,
+        path: str,
         method: str
     ) -> Optional[Dict]:
         """Get schema for specific endpoint."""
+        import json
+
         prompt = f"""
         Extract the complete schema for the endpoint {method.upper()} {path} from this OpenAPI spec.
         Return JSON with:
@@ -309,10 +373,10 @@ class OpenAPIParserService:
             "responses": {{}},
             "security": []
         }}
-        
+
         OpenAPI Spec:
         {json.dumps(parsed_spec, indent=2)[:6000]}
-        
+
         Only return JSON, no explanations.
         """
         

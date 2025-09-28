@@ -10,6 +10,7 @@ from dependency_injector.wiring import Provide, inject
 from loadtester.domain.services.load_test_service import LoadTestService
 from loadtester.infrastructure.database.database_connection import DatabaseManager
 from loadtester.infrastructure.external.ai_client import MultiProviderAIClient, OpenAPIParserService
+from loadtester.infrastructure.external.local_openapi_parser import LocalOpenAPIParser
 from loadtester.infrastructure.external.k6_service import K6RunnerService, K6ScriptGeneratorService
 from loadtester.infrastructure.external.mock_data_service import MockDataGeneratorService
 from loadtester.infrastructure.external.pdf_generator_service import PDFGeneratorService, ReportGeneratorService
@@ -22,6 +23,16 @@ from loadtester.infrastructure.repositories.test_scenario_repository import Test
 from loadtester.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+
+def create_openapi_parser(config_provider, ai_client_provider):
+    """Factory function to create the appropriate OpenAPI parser based on feature flag."""
+    # config_provider is actually a dict of settings values
+    use_local = config_provider.get('use_local_openapi_parsing', False)
+    if use_local:
+        return LocalOpenAPIParser()
+    else:
+        return OpenAPIParserService(ai_client_provider)
 
 
 class Container(containers.DeclarativeContainer):
@@ -84,10 +95,11 @@ class Container(containers.DeclarativeContainer):
         openai_api_key=config.openai_api_key,
     )
     
-    # AI Services
-    openapi_parser_service = providers.Factory(
-        OpenAPIParserService,
-        ai_client=ai_client,
+    # OpenAPI Parser Service (conditional based on feature flag)
+    openapi_parser_service = providers.Singleton(
+        create_openapi_parser,
+        config_provider=config,
+        ai_client_provider=ai_client
     )
     
     mock_data_generator_service = providers.Factory(

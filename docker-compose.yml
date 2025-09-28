@@ -30,6 +30,7 @@ services:
       - DEGRADATION_ERROR_RATE_THRESHOLD=0.5
       - DEFAULT_TEST_DURATION=60
       - MAX_FILE_SIZE=10485760  # 10MB
+      - USE_LOCAL_OPENAPI_PARSING=${USE_LOCAL_OPENAPI_PARSING:-true}
     depends_on:
       - k6
     networks:
@@ -37,7 +38,7 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
+      interval: 180s
       timeout: 10s
       retries: 3
 
@@ -60,7 +61,7 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
-      interval: 30s
+      interval: 300s
       timeout: 10s
       retries: 3
 

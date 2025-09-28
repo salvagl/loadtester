@@ -4,13 +4,15 @@ FastAPI endpoints for OpenAPI specification handling
 """
 
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, validator
 
 from loadtester.infrastructure.config.dependencies import get_openapi_parser_service
+from typing import Union
 from loadtester.infrastructure.external.ai_client import OpenAPIParserService
+from loadtester.infrastructure.external.local_openapi_parser import LocalOpenAPIParser
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +42,35 @@ class EndpointInfo(BaseModel):
     """Endpoint information model."""
     path: str = Field(..., description="Endpoint path")
     method: str = Field(..., description="HTTP method")
-    summary: str = Field("", description="Endpoint summary")
-    description: str = Field("", description="Endpoint description")
-    parameters: List[Dict] = Field(default_factory=list, description="Endpoint parameters")
-    request_body: Dict = Field(default_factory=dict, description="Request body schema")
-    responses: Dict = Field(default_factory=dict, description="Response schemas")
+    summary: Optional[str] = Field("", description="Endpoint summary")
+    description: Optional[str] = Field("", description="Endpoint description")
+    parameters: Optional[List[Dict]] = Field(default_factory=list, description="Endpoint parameters")
+    request_body: Optional[Dict] = Field(default_factory=dict, description="Request body schema")
+    responses: Optional[Dict] = Field(default_factory=dict, description="Response schemas")
+
+
+    @classmethod
+    def from_dict(cls, data: Dict):
+        """Create EndpointInfo from dict, handling None values."""
+        # Function to replace None with appropriate default
+        def safe_get(key, default):
+            value = data.get(key)
+            return default if value is None else value
+
+        # Function to safely get request body from either naming convention
+        def get_request_body():
+            value = data.get("requestBody") or data.get("request_body")
+            return {} if value is None else value
+
+        return cls(
+            path=safe_get("path", ""),
+            method=safe_get("method", ""),
+            summary=safe_get("summary", ""),
+            description=safe_get("description", ""),
+            parameters=safe_get("parameters", []),
+            request_body=get_request_body(),
+            responses=safe_get("responses", {})
+        )
 
 
 class ParsedSpecResponse(BaseModel):
@@ -64,7 +90,7 @@ class ParsedSpecResponse(BaseModel):
 )
 async def validate_openapi_spec(
     request: OpenAPISpecRequest,
-    openapi_parser: OpenAPIParserService = Depends(get_openapi_parser_service)
+    openapi_parser: Union[OpenAPIParserService, LocalOpenAPIParser] = Depends(get_openapi_parser_service)
 ) -> ValidationResponse:
     """Validate OpenAPI specification."""
     try:
@@ -102,7 +128,7 @@ async def validate_openapi_spec(
 )
 async def parse_openapi_spec(
     request: OpenAPISpecRequest,
-    openapi_parser: OpenAPIParserService = Depends(get_openapi_parser_service)
+    openapi_parser: Union[OpenAPIParserService, LocalOpenAPIParser] = Depends(get_openapi_parser_service)
 ) -> ParsedSpecResponse:
     """Parse OpenAPI specification and extract endpoints."""
     try:
@@ -122,19 +148,16 @@ async def parse_openapi_spec(
         # Extract endpoints
         endpoints_data = await openapi_parser.extract_endpoints(parsed_spec)
         
-        # Convert to response format
-        endpoints = [
-            EndpointInfo(
-                path=ep.get("path", ""),
-                method=ep.get("method", ""),
-                summary=ep.get("summary", ""),
-                description=ep.get("description", ""),
-                parameters=ep.get("parameters", []),
-                request_body=ep.get("requestBody", {}),
-                responses=ep.get("responses", {})
-            )
-            for ep in endpoints_data
-        ]
+        # Convert to response format with bulletproof None handling
+        endpoints = []
+        for i, ep in enumerate(endpoints_data):
+            try:
+                # Use from_dict method
+                endpoint_info = EndpointInfo.from_dict(ep)
+                endpoints.append(endpoint_info)
+            except Exception as e:
+                logger.error(f"Error creating EndpointInfo for endpoint {i}: {ep}. Error: {e}")
+                raise
         
         return ParsedSpecResponse(
             info=parsed_spec.get("info", {}),
@@ -163,7 +186,7 @@ async def get_endpoint_schema(
     path: str,
     method: str,
     spec_content: str,
-    openapi_parser: OpenAPIParserService = Depends(get_openapi_parser_service)
+    openapi_parser: Union[OpenAPIParserService, LocalOpenAPIParser] = Depends(get_openapi_parser_service)
 ) -> Dict:
     """Get schema for specific endpoint."""
     try:
@@ -207,7 +230,7 @@ async def filter_endpoints(
     request: OpenAPISpecRequest,
     methods: List[str] = None,
     path_pattern: str = None,
-    openapi_parser: OpenAPIParserService = Depends(get_openapi_parser_service)
+    openapi_parser: Union[OpenAPIParserService, LocalOpenAPIParser] = Depends(get_openapi_parser_service)
 ) -> Dict:
     """Filter endpoints based on criteria."""
     try:

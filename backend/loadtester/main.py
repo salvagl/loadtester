@@ -39,6 +39,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     container = Container()
     container.config.from_pydantic(settings)
     container.init_resources()
+    container.wire(modules=container.wiring_config.modules)
     app.state.container = container
     
     logger.info("Application startup completed")
@@ -47,6 +48,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     # Shutdown
     logger.info("Shutting down application")
+    container.unwire()
     container.shutdown_resources()
 
 

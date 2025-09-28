@@ -52,8 +52,8 @@ if [ "$(id -u)" = "0" ]; then
     fi
 
     echo "Permissions fixed. Switching to appuser..."
-    # Switch to appuser and execute the original command
-    exec sudo -u appuser "$@"
+    # Switch to appuser and execute the original command, preserving environment
+    exec sudo -E -u appuser "$@"
 else
     echo "Already running as appuser, proceeding..."
     # If already running as appuser, just execute the command

@@ -99,6 +99,8 @@ def initialize_session_state():
         st.session_state.current_job_id = None
     if 'job_status' not in st.session_state:
         st.session_state.job_status = None
+    if 'validated_spec' not in st.session_state:
+        st.session_state.validated_spec = False
 
 def render_header():
     """Render application header."""
@@ -175,13 +177,20 @@ def render_setup_page():
     
     # Load OpenAPI specification
     spec_result = openapi_component.render()
-    
-    if spec_result and spec_result.get('success'):
-        st.session_state.openapi_spec = spec_result['spec_content']
-        st.session_state.parsed_spec = spec_result['parsed_spec']
-        st.session_state.available_endpoints = spec_result['endpoints']
-        
-        st.markdown('<div class="success-box">✅ OpenAPI specification loaded successfully!</div>', 
+
+    # Handle successful validation result (either fresh or from session state)
+    if (spec_result and spec_result.get('success')) or st.session_state.get('validated_spec', False):
+        # If we have session state data but no fresh result, use session state
+        if not (spec_result and spec_result.get('success')) and st.session_state.get('validated_spec', False):
+            # Data is already in session state from previous validation
+            pass
+        elif spec_result and spec_result.get('success'):
+            # Fresh validation result - store in session state
+            st.session_state.openapi_spec = spec_result['spec_content']
+            st.session_state.parsed_spec = spec_result['parsed_spec']
+            st.session_state.available_endpoints = spec_result['endpoints']
+
+        st.markdown('<div class="success-box">✅ OpenAPI specification loaded successfully!</div>',
                    unsafe_allow_html=True)
         
         # Show API information
@@ -214,9 +223,15 @@ def render_setup_page():
 def render_configure_page():
     """Render endpoint selection and configuration page."""
     st.markdown('<h2 class="section-header">⚙️ Step 2: Configure Test Endpoints</h2>', unsafe_allow_html=True)
-    
-    if not st.session_state.available_endpoints:
-        st.markdown('<div class="warning-box">⚠️ Please load an OpenAPI specification first in the Setup page.</div>', 
+
+    if not st.session_state.available_endpoints and not st.session_state.get('validated_spec', False):
+        st.markdown('<div class="warning-box">⚠️ Please load and validate an OpenAPI specification first in the Setup page.</div>',
+                   unsafe_allow_html=True)
+        return
+
+    # If we have validated spec but no endpoints, show message to go back to Setup
+    if not st.session_state.available_endpoints and st.session_state.get('validated_spec', False):
+        st.markdown('<div class="info-box">ℹ️ Specification validated but no endpoints loaded. Please return to Setup page to complete the process.</div>',
                    unsafe_allow_html=True)
         return
     
