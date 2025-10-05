@@ -183,12 +183,7 @@ class APIRepository(APIRepositoryInterface):
             active=model.active,
         )
         
-        # Convert endpoints if loaded
-        if hasattr(model, 'endpoints') and model.endpoints:
-            endpoint_repo = EndpointRepository(self.session)
-            api.endpoints = [
-                endpoint_repo._model_to_entity(endpoint_model) 
-                for endpoint_model in model.endpoints
-            ]
+        # Don't load endpoints here to avoid lazy loading issues
+        # Endpoints will be loaded separately when needed
         
         return api

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class JobRepository(JobRepositoryInterface):
     """SQLAlchemy implementation of Job repository."""
-    
+
     def __init__(self, session: AsyncSession):
         self.session = session
     
@@ -42,15 +42,15 @@ class JobRepository(JobRepositoryInterface):
                 finished_at=job.finished_at,
                 created_by=job.created_by,
             )
-            
+
             self.session.add(job_model)
             await self.session.commit()
             await self.session.refresh(job_model)
-            
+
             logger.info(f"Created job: {job_model.job_type} (ID: {job_model.job_id})")
-            
+
             return self._model_to_entity(job_model)
-            
+
         except Exception as e:
             await self.session.rollback()
             logger.error(f"Error creating job: {str(e)}")
@@ -60,15 +60,15 @@ class JobRepository(JobRepositoryInterface):
         """Get job by ID."""
         try:
             stmt = select(JobModel).where(JobModel.job_id == job_id)
-            
+
             result = await self.session.execute(stmt)
             job_model = result.scalar_one_or_none()
-            
+
             if not job_model:
                 return None
-            
+
             return self._model_to_entity(job_model)
-            
+
         except Exception as e:
             logger.error(f"Error getting job by ID {job_id}: {str(e)}")
             raise DatabaseError(f"Failed to get job: {str(e)}")
@@ -99,12 +99,12 @@ class JobRepository(JobRepositoryInterface):
                 .where(JobModel.status == JobStatus.RUNNING.value)
                 .order_by(JobModel.started_at.asc())
             )
-            
+
             result = await self.session.execute(stmt)
             job_models = result.scalars().all()
-            
+
             return [self._model_to_entity(model) for model in job_models]
-            
+
         except Exception as e:
             logger.error(f"Error getting running jobs: {str(e)}")
             raise DatabaseError(f"Failed to get running jobs: {str(e)}")

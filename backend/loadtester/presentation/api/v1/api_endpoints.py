@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, validator
 
 from loadtester.domain.entities.domain_entities import AuthConfig, AuthType, LoadTestConfiguration
 from loadtester.domain.services.load_test_service import LoadTestService
-from loadtester.infrastructure.config.dependencies import get_load_test_service
+from loadtester.infrastructure.config.dependencies import get_custom_load_test_service
 from loadtester.shared.exceptions.domain_exceptions import InvalidConfigurationError, LoadTestExecutionError
 
 logger = logging.getLogger(__name__)
@@ -111,7 +111,7 @@ class JobStatusResponse(BaseModel):
 async def create_load_test(
     request: LoadTestRequest,
     background_tasks: BackgroundTasks,
-    load_test_service: LoadTestService = Depends(get_load_test_service)
+    load_test_service: LoadTestService = Depends(get_custom_load_test_service)
 ) -> LoadTestResponse:
     """Create a new load test job."""
     try:
@@ -187,7 +187,7 @@ async def create_load_test(
 )
 async def get_job_status(
     job_id: str,
-    load_test_service: LoadTestService = Depends(get_load_test_service)
+    load_test_service: LoadTestService = Depends(get_custom_load_test_service)
 ) -> JobStatusResponse:
     """Get job status and progress."""
     try:
@@ -212,8 +212,8 @@ async def get_job_status(
 )
 async def validate_openapi_spec(
     api_spec: str,
-    load_test_service: LoadTestService = Depends(get_load_test_service)
-) -> Dict[str, bool]:
+    load_test_service: LoadTestService = Depends(get_custom_load_test_service)
+) -> Dict:
     """Validate OpenAPI specification."""
     try:
         # This would use the OpenAPI parser service
@@ -242,7 +242,7 @@ async def list_jobs(
     limit: int = 50,
     offset: int = 0,
     status_filter: Optional[str] = None,
-    load_test_service: LoadTestService = Depends(get_load_test_service)
+    load_test_service: LoadTestService = Depends(get_custom_load_test_service)
 ) -> Dict:
     """List load test jobs."""
     try:

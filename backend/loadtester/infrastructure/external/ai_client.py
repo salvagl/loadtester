@@ -45,6 +45,7 @@ class MultiProviderAIClient(AIClientInterface):
     
     def _determine_primary_provider(self) -> str:
         """Determine which provider to use as primary."""
+        logger.info(f"AI Client keys - Google: {self.google_api_key}, Anthropic: {self.anthropic_api_key}, OpenAI: {self.openai_api_key}")
         if self.google_api_key:
             return "google"
         elif self.anthropic_api_key:

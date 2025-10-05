@@ -50,41 +50,34 @@ class Container(containers.DeclarativeContainer):
         database_url=config.database_url,
     )
     
-    # Database session factory
-    db_session_factory = providers.Resource(
-        database_manager.provided.get_session
-    )
-    
-    # Repositories
+    # Session dependency - this should be injected via FastAPI's dependency system
+    # For now, we'll remove session dependencies from the container
+    # and handle them through FastAPI's dependency injection
+
+    # Repositories - these will receive sessions through dependency injection
     api_repository = providers.Factory(
         APIRepository,
-        session=db_session_factory,
     )
 
     endpoint_repository = providers.Factory(
         EndpointRepository,
-        session=db_session_factory,
     )
-    
-    
+
+
     test_scenario_repository = providers.Factory(
         TestScenarioRepository,
-        session=db_session_factory,
     )
-    
+
     test_execution_repository = providers.Factory(
         TestExecutionRepository,
-        session=db_session_factory,
     )
-    
+
     test_result_repository = providers.Factory(
         TestResultRepository,
-        session=db_session_factory,
     )
-    
+
     job_repository = providers.Factory(
         JobRepository,
-        session=db_session_factory,
     )
     
     # External Services

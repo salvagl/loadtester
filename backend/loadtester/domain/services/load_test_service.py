@@ -477,7 +477,7 @@ class LoadTestService:
     ) -> Optional[AuthConfig]:
         """Create auth config for endpoint."""
         # Endpoint-specific auth takes precedence
-        if "auth" in endpoint_config:
+        if "auth" in endpoint_config and endpoint_config["auth"] is not None:
             auth_data = endpoint_config["auth"]
             return AuthConfig(
                 auth_type=auth_data.get("type"),
