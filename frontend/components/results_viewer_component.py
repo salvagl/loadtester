@@ -30,11 +30,41 @@ class ResultsViewerComponent:
         # Historical results
         self._render_historical_results()
     
+    def _cancel_job(self, job_id: str) -> bool:
+        """Cancel a specific job."""
+        try:
+            response = requests.delete(f"{self.backend_url}/api/v1/jobs/{job_id}/cancel")
+            return response.status_code == 200
+        except Exception as e:
+            st.error(f"Error cancelling job: {str(e)}")
+            return False
+
+    def _cancel_all_jobs(self) -> int:
+        """Cancel all running jobs."""
+        try:
+            response = requests.delete(f"{self.backend_url}/api/v1/jobs/cancel-all")
+            if response.status_code == 200:
+                return response.json().get('cancelled_count', 0)
+            return 0
+        except Exception as e:
+            st.error(f"Error cancelling jobs: {str(e)}")
+            return 0
+
     def _render_current_job_results(self):
         """Render results for the current job."""
         job_id = st.session_state.current_job_id
-        
+
         st.markdown("### 🔄 Current Job Results")
+
+        # Add cancel button for current job
+        col1, col2 = st.columns([4, 1])
+        with col2:
+            if st.button("❌ Cancel Job", key=f"cancel_{job_id}", use_container_width=True):
+                if self._cancel_job(job_id):
+                    st.success(f"Job {job_id} cancelled successfully!")
+                    st.rerun()
+                else:
+                    st.error("Failed to cancel job")
         
         try:
             # Get job status
@@ -80,7 +110,17 @@ class ResultsViewerComponent:
     
     def _render_historical_results(self):
         """Render historical test results."""
-        st.markdown("### 📚 Historical Results")
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            st.markdown("### 📚 Historical Results")
+        with col2:
+            if st.button("🗑️ Cancel All Running", key="cancel_all_jobs", use_container_width=True, type="secondary"):
+                cancelled_count = self._cancel_all_jobs()
+                if cancelled_count > 0:
+                    st.success(f"Cancelled {cancelled_count} running job(s)!")
+                    st.rerun()
+                else:
+                    st.info("No running jobs to cancel")
         
         try:
             # Get available reports

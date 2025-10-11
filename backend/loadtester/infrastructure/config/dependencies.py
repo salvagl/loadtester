@@ -43,7 +43,7 @@ async def get_custom_load_test_service(
     from loadtester.infrastructure.external.local_openapi_parser import LocalOpenAPIParser
     from loadtester.infrastructure.external.mock_data_service import MockDataGeneratorService
     from loadtester.infrastructure.external.k6_service import K6ScriptGeneratorService, K6RunnerService
-    from loadtester.infrastructure.external.pdf_generator_service import ReportGeneratorService
+    from loadtester.infrastructure.external.pdf_generator_service import ReportGeneratorService, PDFGeneratorService
     from loadtester.infrastructure.external.ai_client import MultiProviderAIClient
 
     logger = logging.getLogger(__name__)
@@ -93,9 +93,12 @@ async def get_custom_load_test_service(
             scripts_path="/app/k6_scripts",
             results_path="/app/k6_results"
         )
+        # Create PDF generator service
+        pdf_generator = PDFGeneratorService(output_path="/app/shared/reports/generated")
+
         report_generator = ReportGeneratorService(
             ai_client=ai_client,
-            pdf_generator=None  # Will be created later if needed
+            pdf_generator=pdf_generator
         )
 
         # Create service with repositories that have proper sessions
@@ -115,7 +118,7 @@ async def get_custom_load_test_service(
                 'max_concurrent_jobs': 3,
                 'degradation_response_time_multiplier': 2.0,
                 'degradation_error_rate_threshold': 0.05,
-                'default_test_duration': 300,
+                'default_test_duration': 60,  # Reduced from 300 for faster testing (total: 60s + 10s ramp-up + 10s ramp-down = 80s)
                 'initial_user_percentage': 10,
                 'user_increment_percentage': 20,
                 'stop_error_threshold': 0.1,

@@ -233,6 +233,68 @@ async def validate_openapi_spec(
         )
 
 
+@router.delete(
+    "/jobs/{job_id}/cancel",
+    summary="Cancel Job",
+    description="Cancel a running or pending load test job"
+)
+async def cancel_job(
+    job_id: str,
+    load_test_service: LoadTestService = Depends(get_custom_load_test_service)
+) -> Dict:
+    """Cancel a specific job."""
+    try:
+        # Update job status to FAILED with cancellation message
+        success = await load_test_service.cancel_job(job_id)
+
+        if success:
+            logger.info(f"Job {job_id} cancelled successfully")
+            return {
+                "status": "success",
+                "message": f"Job {job_id} has been cancelled",
+                "job_id": job_id
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job {job_id} not found or already completed"
+            )
+
+    except Exception as e:
+        logger.error(f"Error cancelling job {job_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error cancelling job: {str(e)}"
+        )
+
+
+@router.delete(
+    "/jobs/cancel-all",
+    summary="Cancel All Running Jobs",
+    description="Cancel all running or pending load test jobs"
+)
+async def cancel_all_jobs(
+    load_test_service: LoadTestService = Depends(get_custom_load_test_service)
+) -> Dict:
+    """Cancel all running jobs."""
+    try:
+        cancelled_count = await load_test_service.cancel_all_running_jobs()
+
+        logger.info(f"Cancelled {cancelled_count} running jobs")
+        return {
+            "status": "success",
+            "message": f"Cancelled {cancelled_count} running job(s)",
+            "cancelled_count": cancelled_count
+        }
+
+    except Exception as e:
+        logger.error(f"Error cancelling all jobs: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error cancelling jobs: {str(e)}"
+        )
+
+
 @router.get(
     "/jobs",
     summary="List Jobs",

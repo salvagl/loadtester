@@ -227,22 +227,41 @@ class MockDataGeneratorService(MockDataGeneratorServiceInterface):
         """Generate request body from JSON schema."""
         if not schema:
             return {}
-        
+
         schema_type = schema.get("type", "object")
-        
+        required_fields = schema.get("required", [])
+
         if schema_type == "object":
             body = {}
             properties = schema.get("properties", {})
-            
+
+            # Always generate required fields
+            for prop_name in required_fields:
+                if prop_name in properties:
+                    body[prop_name] = self._generate_value_from_property_schema(
+                        prop_name, properties[prop_name]
+                    )
+
+            # Generate other properties (optional)
             for prop_name, prop_schema in properties.items():
-                body[prop_name] = self._generate_value_from_property_schema(prop_name, prop_schema)
-            
+                if prop_name not in body:
+                    # Generate optional fields with 70% probability
+                    if self.faker.random.random() < 0.7:
+                        body[prop_name] = self._generate_value_from_property_schema(
+                            prop_name, prop_schema
+                        )
+
             return body
-        
+
         elif schema_type == "array":
             items_schema = schema.get("items", {})
-            return [self._generate_value_from_property_schema("item", items_schema)]
-        
+            # Generate 1-3 items for arrays
+            count = self.faker.random_int(min=1, max=3)
+            return [
+                self._generate_value_from_property_schema(f"item_{i}", items_schema)
+                for i in range(count)
+            ]
+
         else:
             return self._generate_value_from_property_schema("value", schema)
     
@@ -250,7 +269,12 @@ class MockDataGeneratorService(MockDataGeneratorServiceInterface):
         """Generate value for a specific property schema."""
         prop_type = prop_schema.get("type", "string")
         prop_format = prop_schema.get("format", "")
-        
+        prop_enum = prop_schema.get("enum", [])
+
+        # Handle enum values
+        if prop_enum:
+            return self.faker.random_element(elements=prop_enum)
+
         if prop_type == "string":
             if prop_format == "email":
                 return self.faker.email()
@@ -260,27 +284,41 @@ class MockDataGeneratorService(MockDataGeneratorServiceInterface):
                 return self.faker.date_time().isoformat()
             elif prop_format == "uuid":
                 return str(uuid4())
+            elif prop_format == "uri" or "url" in prop_name.lower():
+                return self.faker.image_url()
             else:
                 return self._generate_faker_value("string", prop_name)
-        
+
         elif prop_type == "integer":
             minimum = prop_schema.get("minimum", 1)
-            maximum = prop_schema.get("maximum", 1000)
+            maximum = prop_schema.get("maximum", 10000)
             return self.faker.random_int(min=minimum, max=maximum)
-        
+
         elif prop_type == "number":
-            return round(self.faker.random.uniform(0, 1000), 2)
-        
+            minimum = prop_schema.get("minimum", 0)
+            maximum = prop_schema.get("maximum", 1000)
+            return round(self.faker.random.uniform(minimum, maximum), 2)
+
         elif prop_type == "boolean":
             return self.faker.boolean()
-        
+
         elif prop_type == "array":
             items = prop_schema.get("items", {})
-            return [self._generate_value_from_property_schema("item", items)]
-        
+            # Generate 1-3 items for arrays
+            count = self.faker.random_int(min=1, max=3)
+
+            # Special handling for array of strings (like photoUrls)
+            if items.get("type") == "string":
+                if items.get("format") == "uri" or "url" in prop_name.lower():
+                    return [self.faker.image_url() for _ in range(count)]
+                else:
+                    return [self._generate_value_from_property_schema(f"{prop_name}_{i}", items) for i in range(count)]
+            else:
+                return [self._generate_value_from_property_schema(f"{prop_name}_{i}", items) for i in range(count)]
+
         elif prop_type == "object":
             return self._generate_body_from_schema(prop_schema)
-        
+
         else:
             return self._generate_faker_value("string", prop_name)
     

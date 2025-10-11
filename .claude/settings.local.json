@@ -1,18 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(timeout 20 docker-compose up backend --no-deps)",
-      "Bash(docker-compose build:*)",
-      "Bash(timeout 30 docker-compose up backend --no-deps)",
-      "Bash(timeout 60 docker-compose up backend --no-deps)",
-      "WebFetch(domain:0.0.0.0)",
-      "Bash(sed:*)",
-      "Bash(docker-compose restart:*)",
-      "Bash(docker-compose logs:*)",
-      "Bash(docker exec:*)",
-      "WebSearch",
-      "Bash(curl:*)",
-      "Bash(docker-compose:*)"
+      "Bash(docker images:*)"
     ],
     "deny": [],
     "ask": []

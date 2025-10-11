@@ -12,7 +12,15 @@ RUN apt-get update && apt-get install -y \
     curl \
     gcc \
     sudo \
+    wget \
     && rm -rf /var/lib/apt/lists/*
+
+# Install K6 directly from GitHub releases
+RUN wget -O k6.tar.gz "https://github.com/grafana/k6/releases/download/v0.47.0/k6-v0.47.0-linux-amd64.tar.gz" \
+    && tar -xzf k6.tar.gz \
+    && mv k6-v0.47.0-linux-amd64/k6 /usr/local/bin/ \
+    && rm -rf k6.tar.gz k6-v0.47.0-linux-amd64/ \
+    && chmod +x /usr/local/bin/k6
 
 # Install UV
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
@@ -45,6 +53,11 @@ COPY loadtester/ ./loadtester/
 RUN useradd --create-home --shell /bin/bash appuser && \
     chown -R appuser:appuser /app && \
     echo "appuser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+# Create K6 config directory for appuser and set permissions
+RUN mkdir -p /home/appuser/.config/loadimpact/k6 && \
+    chown -R appuser:appuser /home/appuser/.config && \
+    chmod -R 755 /home/appuser/.config
 # Note: We don't switch to appuser here, the entrypoint script will handle it
 
 # Health check

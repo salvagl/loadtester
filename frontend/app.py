@@ -359,8 +359,7 @@ def render_job_status():
             
             with col3:
                 if status_data.get('report_url'):
-                    if st.button("📄 Download Report"):
-                        download_report(st.session_state.current_job_id)
+                    download_report(st.session_state.current_job_id)
             
             # Progress bar
             if status == "RUNNING":

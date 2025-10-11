@@ -366,7 +366,15 @@ class LoadTestService:
             endpoint = await self.endpoint_repository.get_by_id(scenario.endpoint_id)
             if not endpoint:
                 raise ResourceNotFoundError(f"Endpoint {scenario.endpoint_id} not found")
-            
+
+            # Get API for base URL
+            api = await self.api_repository.get_by_id(endpoint.api_id)
+            if not api:
+                raise ResourceNotFoundError(f"API {endpoint.api_id} not found")
+
+            # Attach API to endpoint for K6 script generation
+            endpoint.api = api
+
             # Generate K6 script
             scenario_config = {
                 "concurrent_users": scenario.concurrent_users,
@@ -374,7 +382,7 @@ class LoadTestService:
                 "ramp_up": scenario.ramp_up_seconds,
                 "ramp_down": scenario.ramp_down_seconds,
             }
-            
+
             k6_script = await self.k6_generator.generate_k6_script(
                 endpoint, scenario.test_data or [], scenario_config
             )
@@ -456,18 +464,67 @@ class LoadTestService:
     
     def _extract_base_url(self, parsed_spec: Dict) -> str:
         """Extract base URL from OpenAPI spec."""
-        # Try to get from servers
+        # Try to get from servers (OpenAPI 3.0+)
         if "servers" in parsed_spec and parsed_spec["servers"]:
-            return parsed_spec["servers"][0].get("url", "")
-        
+            server_url = parsed_spec["servers"][0].get("url", "")
+
+            # Check if the URL is relative (starts with /)
+            if server_url.startswith("/"):
+                # It's a relative URL, need to construct full URL
+                # Try to get host from spec info or use a default
+                logger.warning(f"Server URL is relative: {server_url}. Need to add host.")
+
+                # Check if there's an 'x-server-url' extension or similar
+                if "x-server-url" in parsed_spec.get("info", {}):
+                    base_host = parsed_spec["info"]["x-server-url"]
+                    full_url = f"{base_host.rstrip('/')}{server_url}"
+                    logger.info(f"Constructed full URL from x-server-url: {full_url}")
+                    return full_url
+
+                # If spec has externalDocs with a URL, check if it's a known API
+                if "externalDocs" in parsed_spec:
+                    ext_url = parsed_spec["externalDocs"].get("url", "")
+                    if ext_url:
+                        from urllib.parse import urlparse
+                        parsed = urlparse(ext_url)
+
+                        # Special handling for known APIs (Petstore)
+                        if "swagger.io" in ext_url and server_url.startswith("/api/v"):
+                            # This is likely the Petstore API
+                            version = server_url.split("/")[2] if len(server_url.split("/")) > 2 else "v3"
+                            if version == "v2":
+                                full_url = f"https://petstore.swagger.io{server_url}"
+                            else:  # v3 or other
+                                full_url = f"https://petstore3.swagger.io{server_url}"
+                            logger.info(f"Detected Petstore API, using correct server: {full_url}")
+                            return full_url
+
+                        # For other APIs, try to extract host from external docs
+                        if parsed.scheme and parsed.netloc:
+                            base_host = f"{parsed.scheme}://{parsed.netloc}"
+                            full_url = f"{base_host}{server_url}"
+                            logger.info(f"Constructed full URL from externalDocs: {full_url}")
+                            return full_url
+
+                # Last resort: return as-is and let it be handled later
+                logger.warning(f"Could not determine full host, returning relative URL: {server_url}")
+                return server_url
+
+            # URL is absolute
+            logger.info(f"Extracted absolute base URL: {server_url}")
+            return server_url
+
         # Fallback to host + basePath (OpenAPI 2.0)
         host = parsed_spec.get("host", "")
         schemes = parsed_spec.get("schemes", ["https"])
         base_path = parsed_spec.get("basePath", "")
-        
+
         if host:
-            return f"{schemes[0]}://{host}{base_path}"
-        
+            full_url = f"{schemes[0]}://{host}{base_path}"
+            logger.info(f"Constructed base URL from host: {full_url}")
+            return full_url
+
+        logger.warning("Could not extract base URL from spec")
         return ""
     
     def _create_auth_config(
@@ -520,28 +577,45 @@ class LoadTestService:
         return []
     
     def _parse_k6_results_to_test_result(
-        self, 
-        k6_results: Dict, 
+        self,
+        k6_results: Dict,
         execution_id: int
     ) -> TestResult:
         """Parse K6 results into TestResult entity."""
         metrics = k6_results.get("metrics", {})
-        
+
+        # Extract metrics with safe defaults
+        http_req_duration = metrics.get("http_req_duration", {})
+        http_reqs = metrics.get("http_reqs", {})
+        http_req_failed = metrics.get("http_req_failed", {})
+        data_sent = metrics.get("data_sent", {})
+        data_received = metrics.get("data_received", {})
+
+        # Calculate success rate (failure rate is in 'value' or 'rate', ranging 0-1)
+        total_requests = http_reqs.get("count", 0)
+        failed_count = http_req_failed.get("count", 0)
+        failure_rate = http_req_failed.get("rate", 0)  # 0-1 range
+
+        # Success rate is (1 - failure_rate) * 100
+        success_rate = (1 - failure_rate) * 100 if failure_rate is not None else 0
+
+        # If we have failed_count, calculate successful requests
+        successful_requests = total_requests - failed_count if failed_count else total_requests
+
         return TestResult(
             execution_id=execution_id,
-            avg_response_time_ms=metrics.get("http_req_duration", {}).get("avg"),
-            p95_response_time_ms=metrics.get("http_req_duration", {}).get("p(95)"),
-            p99_response_time_ms=metrics.get("http_req_duration", {}).get("p(99)"),
-            min_response_time_ms=metrics.get("http_req_duration", {}).get("min"),
-            max_response_time_ms=metrics.get("http_req_duration", {}).get("max"),
-            total_requests=metrics.get("http_reqs", {}).get("count", 0),
-            successful_requests=metrics.get("http_reqs", {}).get("count", 0) - 
-                              metrics.get("http_req_failed", {}).get("count", 0),
-            failed_requests=metrics.get("http_req_failed", {}).get("count", 0),
-            success_rate_percent=metrics.get("http_req_failed", {}).get("rate", 0) * 100,
-            requests_per_second=metrics.get("http_reqs", {}).get("rate"),
-            data_sent_kb=metrics.get("data_sent", {}).get("count", 0) / 1024,
-            data_received_kb=metrics.get("data_received", {}).get("count", 0) / 1024,
+            avg_response_time_ms=http_req_duration.get("avg"),
+            p95_response_time_ms=http_req_duration.get("p(95)"),
+            p99_response_time_ms=http_req_duration.get("p(99)"),  # May be None
+            min_response_time_ms=http_req_duration.get("min"),
+            max_response_time_ms=http_req_duration.get("max"),
+            total_requests=total_requests,
+            successful_requests=successful_requests,
+            failed_requests=failed_count,
+            success_rate_percent=success_rate,
+            requests_per_second=http_reqs.get("rate"),
+            data_sent_kb=data_sent.get("count", 0) / 1024 if data_sent.get("count") else 0,
+            data_received_kb=data_received.get("count", 0) / 1024 if data_received.get("count") else 0,
         )
     
     async def _update_job_progress(
@@ -556,3 +630,55 @@ class LoadTestService:
         
         if message:
             logger.info(f"Job {job.job_id}: {message} ({percentage:.1f}%)")
+
+    async def cancel_job(self, job_id: str) -> bool:
+        """Cancel a specific job."""
+        try:
+            job = await self.job_repository.get_by_id(job_id)
+
+            if not job:
+                logger.warning(f"Job {job_id} not found")
+                return False
+
+            # Only cancel if job is PENDING or RUNNING
+            if job.status not in [JobStatus.PENDING, JobStatus.RUNNING]:
+                logger.warning(f"Job {job_id} is {job.status}, cannot cancel")
+                return False
+
+            # Update job status to FAILED with cancellation message
+            job.status = JobStatus.FAILED
+            job.error_message = "Job cancelled by user"
+            job.end_time = datetime.utcnow()
+
+            await self.job_repository.update(job)
+            logger.info(f"Job {job_id} cancelled successfully")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error cancelling job {job_id}: {str(e)}")
+            return False
+
+    async def cancel_all_running_jobs(self) -> int:
+        """Cancel all running or pending jobs."""
+        try:
+            # Get all jobs with RUNNING or PENDING status
+            all_jobs = await self.job_repository.get_all()
+            active_jobs = [
+                job for job in all_jobs
+                if job.status in [JobStatus.PENDING, JobStatus.RUNNING]
+            ]
+
+            cancelled_count = 0
+            for job in active_jobs:
+                job.status = JobStatus.FAILED
+                job.error_message = "Job cancelled by user (bulk cancellation)"
+                job.end_time = datetime.utcnow()
+                await self.job_repository.update(job)
+                cancelled_count += 1
+
+            logger.info(f"Cancelled {cancelled_count} running/pending jobs")
+            return cancelled_count
+
+        except Exception as e:
+            logger.error(f"Error cancelling all jobs: {str(e)}")
+            return 0

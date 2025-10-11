@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 class LocalOpenAPIParser:
     """Local OpenAPI parser that doesn't require AI services."""
 
+    def __init__(self):
+        """Initialize parser with spec cache."""
+        self._parsed_spec_cache = None
+
     async def validate_spec(self, spec_content: str) -> bool:
         """Validate OpenAPI specification format locally."""
         try:
@@ -48,13 +52,17 @@ class LocalOpenAPIParser:
         try:
             # First try to parse as JSON
             try:
-                return json.loads(spec_content)
+                parsed = json.loads(spec_content)
+                self._parsed_spec_cache = parsed
+                return parsed
             except json.JSONDecodeError:
                 pass
 
             # Then try to parse as YAML
             try:
-                return yaml.safe_load(spec_content)
+                parsed = yaml.safe_load(spec_content)
+                self._parsed_spec_cache = parsed
+                return parsed
             except yaml.YAMLError:
                 pass
 
@@ -62,12 +70,16 @@ class LocalOpenAPIParser:
             cleaned_content = self._clean_spec_content(spec_content)
 
             try:
-                return json.loads(cleaned_content)
+                parsed = json.loads(cleaned_content)
+                self._parsed_spec_cache = parsed
+                return parsed
             except json.JSONDecodeError:
                 pass
 
             try:
-                return yaml.safe_load(cleaned_content)
+                parsed = yaml.safe_load(cleaned_content)
+                self._parsed_spec_cache = parsed
+                return parsed
             except yaml.YAMLError:
                 pass
 
@@ -121,8 +133,11 @@ class LocalOpenAPIParser:
         path: str,
         method: str
     ) -> Optional[Dict]:
-        """Get schema for specific endpoint locally."""
+        """Get schema for specific endpoint locally with resolved $refs."""
         try:
+            # Cache the spec for reference resolution
+            self._parsed_spec_cache = parsed_spec
+
             paths = parsed_spec.get('paths', {})
             path_data = paths.get(path, {})
             operation = path_data.get(method.lower(), {})
@@ -130,12 +145,26 @@ class LocalOpenAPIParser:
             if not operation:
                 return None
 
-            return {
+            # Extract base schema
+            schema = {
                 "parameters": operation.get('parameters', []),
                 "requestBody": operation.get('requestBody', {}),
                 "responses": operation.get('responses', {}),
                 "security": operation.get('security', [])
             }
+
+            # Resolve $refs in requestBody
+            if schema['requestBody']:
+                schema['requestBody'] = self.resolve_schema_refs(schema['requestBody'], parsed_spec)
+
+            # Resolve $refs in parameters
+            if schema['parameters']:
+                schema['parameters'] = [
+                    self.resolve_schema_refs(param, parsed_spec) if isinstance(param, dict) else param
+                    for param in schema['parameters']
+                ]
+
+            return schema
 
         except Exception as e:
             logger.error(f"Error getting endpoint schema locally: {str(e)}")
@@ -162,3 +191,87 @@ class LocalOpenAPIParser:
     def get_service_name(self) -> str:
         """Get service name."""
         return "Local OpenAPI Parser"
+
+    def resolve_ref(self, ref: str, spec: Optional[Dict] = None) -> Optional[Dict]:
+        """
+        Resolve a $ref reference in the OpenAPI spec.
+
+        Args:
+            ref: Reference string like '#/components/schemas/Pet'
+            spec: OpenAPI spec dict (uses cached spec if not provided)
+
+        Returns:
+            Resolved schema dict or None if not found
+        """
+        if spec is None:
+            spec = self._parsed_spec_cache
+
+        if not spec or not ref:
+            return None
+
+        # Remove leading '#/' if present
+        if ref.startswith('#/'):
+            ref = ref[2:]
+
+        # Split the reference path
+        path_parts = ref.split('/')
+
+        # Navigate through the spec
+        current = spec
+        for part in path_parts:
+            if not isinstance(current, dict):
+                return None
+            current = current.get(part)
+            if current is None:
+                return None
+
+        # If the resolved schema has a $ref, resolve it recursively
+        if isinstance(current, dict) and '$ref' in current:
+            return self.resolve_ref(current['$ref'], spec)
+
+        return current
+
+    def resolve_schema_refs(self, schema: Dict, spec: Optional[Dict] = None) -> Dict:
+        """
+        Recursively resolve all $ref references in a schema.
+
+        Args:
+            schema: Schema dict that may contain $ref
+            spec: OpenAPI spec dict (uses cached spec if not provided)
+
+        Returns:
+            Schema with all $refs resolved
+        """
+        if spec is None:
+            spec = self._parsed_spec_cache
+
+        if not isinstance(schema, dict):
+            return schema
+
+        # If this is a $ref, resolve it
+        if '$ref' in schema:
+            ref_path = schema['$ref']
+            resolved = self.resolve_ref(ref_path, spec)
+            if resolved:
+                # Merge other properties from schema (like description overrides)
+                resolved_copy = resolved.copy()
+                for key, value in schema.items():
+                    if key != '$ref':
+                        resolved_copy[key] = value
+                return self.resolve_schema_refs(resolved_copy, spec)
+            return schema
+
+        # Recursively resolve refs in nested objects
+        result = {}
+        for key, value in schema.items():
+            if isinstance(value, dict):
+                result[key] = self.resolve_schema_refs(value, spec)
+            elif isinstance(value, list):
+                result[key] = [
+                    self.resolve_schema_refs(item, spec) if isinstance(item, dict) else item
+                    for item in value
+                ]
+            else:
+                result[key] = value
+
+        return result

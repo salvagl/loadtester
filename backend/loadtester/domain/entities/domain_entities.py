@@ -74,6 +74,7 @@ class Endpoint:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     active: bool = True
+    api: Optional["API"] = None  # Optional reference to parent API
     test_scenarios: List["TestScenario"] = field(default_factory=list)
 
 
