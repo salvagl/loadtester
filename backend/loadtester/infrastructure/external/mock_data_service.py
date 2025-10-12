@@ -27,37 +27,43 @@ class MockDataGeneratorService(MockDataGeneratorServiceInterface):
         self.faker = Faker()
     
     async def generate_mock_data(
-        self, 
-        endpoint: Endpoint, 
-        schema: Dict, 
+        self,
+        endpoint: Endpoint,
+        schema: Dict,
         count: int = 100
     ) -> List[Dict]:
         """Generate mock data for endpoint based on schema."""
         logger.info(f"Generating {count} mock data records for {endpoint.endpoint_name}")
-        
+
         try:
-            # First, analyze the endpoint to understand data requirements
+            # Analyze endpoint to get data template
             data_template = await self._analyze_endpoint_requirements(endpoint, schema)
-            
-            # Generate mock data using AI
-            if await self.ai_client.is_available():
-                mock_data = await self._generate_with_ai(endpoint, data_template, count)
-            else:
-                mock_data = await self._generate_with_faker(endpoint, data_template, count)
-            
-            # Validate generated data
-            valid_data = []
-            for item in mock_data:
-                if await self.validate_generated_data(item, schema):
-                    valid_data.append(item)
-            
-            logger.info(f"Generated {len(valid_data)} valid mock data records")
-            return valid_data
-            
+
+            # Generate mock data directly from schema (no AI, more reliable)
+            mock_data = []
+            for i in range(count):
+                record = {}
+
+                # Path params
+                if data_template.get("path_params"):
+                    record["path_params"] = {k: i+1 for k in data_template["path_params"]}
+
+                # Query params
+                if data_template.get("query_params"):
+                    record["query_params"] = {k: "test" for k in data_template["query_params"]}
+
+                # Body from schema (this ensures required fields are included)
+                if data_template.get("body"):
+                    record["body"] = self._generate_body_from_schema(data_template["body"])
+
+                mock_data.append(record)
+
+            logger.info(f"Generated {len(mock_data)} mock data records from schema")
+            return mock_data
+
         except Exception as e:
             logger.error(f"Error generating mock data: {str(e)}")
-            # Fallback to basic Faker data
-            return await self._generate_basic_fallback_data(endpoint, count)
+            return []
     
     async def _analyze_endpoint_requirements(self, endpoint: Endpoint, schema: Dict) -> Dict:
         """Analyze endpoint to understand data requirements."""

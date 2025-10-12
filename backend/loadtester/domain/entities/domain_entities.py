@@ -71,6 +71,7 @@ class Endpoint:
     headers_config: Optional[Dict[str, str]] = None
     payload_template: Optional[Dict] = None
     timeout_ms: int = 30000
+    schema: Optional[Dict] = None  # OpenAPI schema for the endpoint
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     active: bool = True

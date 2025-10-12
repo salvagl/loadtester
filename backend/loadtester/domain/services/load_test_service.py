@@ -213,7 +213,7 @@ class LoadTestService:
                 schema = await self.openapi_parser.get_endpoint_schema(
                     parsed_spec, path, method
                 )
-                
+
                 endpoint = Endpoint(
                     api_id=api.api_id,
                     endpoint_name=f"{method} {path}",
@@ -224,6 +224,7 @@ class LoadTestService:
                     expected_concurrent_users=selected_config.get("expected_concurrent_users"),
                     auth_config=self._create_auth_config(selected_config, config.global_auth),
                     timeout_ms=selected_config.get("timeout_ms", 30000),
+                    schema=schema,  # Store the schema for mock data generation
                     created_at=datetime.utcnow(),
                 )
                 
@@ -255,23 +256,24 @@ class LoadTestService:
         return scenarios
     
     async def _create_incremental_scenarios(
-        self, 
-        endpoint: Endpoint, 
+        self,
+        endpoint: Endpoint,
         test_data: List[Dict]
     ) -> List[TestScenario]:
         """Create incremental load scenarios for an endpoint."""
+        import math
         scenarios = []
-        
+
         # Start with baseline scenario (10% of expected load)
-        initial_users = max(1, int(endpoint.expected_concurrent_users * 
+        initial_users = max(1, int(endpoint.expected_concurrent_users *
                                   self.degradation_settings["initial_user_percentage"]))
-        initial_volumetry = max(1, int(endpoint.expected_volumetry * 
+        initial_volumetry = max(1, int(endpoint.expected_volumetry *
                                      self.degradation_settings["initial_user_percentage"]))
-        
+
         current_users = initial_users
         current_volumetry = initial_volumetry
         scenario_number = 1
-        
+
         while scenario_number <= 10:  # Max 10 scenarios per endpoint
             scenario = TestScenario(
                 endpoint_id=endpoint.endpoint_id,
@@ -285,20 +287,24 @@ class LoadTestService:
                 test_data=test_data,
                 created_at=datetime.utcnow(),
             )
-            
+
             scenario = await self.scenario_repository.create(scenario)
             scenarios.append(scenario)
-            
-            # Increment for next scenario
+
+            # Increment for next scenario using ceiling to ensure at least +1
             increment = self.degradation_settings["user_increment_percentage"]
-            current_users = int(current_users * (1 + increment))
-            current_volumetry = int(current_volumetry * (1 + increment))
+            next_users = current_users * (1 + increment)
+            next_volumetry = current_volumetry * (1 + increment)
+
+            # Use ceiling to ensure we always increment at least by 1
+            current_users = max(current_users + 1, math.ceil(next_users))
+            current_volumetry = max(current_volumetry + 1, math.ceil(next_volumetry))
             scenario_number += 1
-            
-            # Stop if we exceed reasonable limits
-            if current_users > endpoint.expected_concurrent_users * 10:
+
+            # Stop if we exceed reasonable limits or reached expected load
+            if current_users > endpoint.expected_concurrent_users * 1.5:
                 break
-        
+
         return scenarios
     
     async def _execute_test_scenarios(
@@ -449,17 +455,39 @@ class LoadTestService:
     async def _generate_final_report(self, job: Job, results: List[TestResult]) -> str:
         """Generate final PDF report."""
         logger.info("Generating final report")
-        
+
+        # Calculate test duration
+        test_duration = 0
+        if job.finished_at and job.started_at:
+            duration_delta = job.finished_at - job.started_at
+            test_duration = int(duration_delta.total_seconds())
+
+        # Count unique endpoints tested by querying executions
+        unique_endpoints = set()
+        for result in results:
+            if result.execution_id:
+                try:
+                    execution = await self.execution_repository.get_by_id(result.execution_id)
+                    if execution and execution.scenario_id:
+                        scenario = await self.scenario_repository.get_by_id(execution.scenario_id)
+                        if scenario and scenario.endpoint_id:
+                            unique_endpoints.add(scenario.endpoint_id)
+                except Exception as e:
+                    logger.warning(f"Could not get endpoint for result {result.result_id}: {e}")
+
         job_info = {
             "job_id": job.job_id,
             "created_at": job.created_at,
+            "started_at": job.started_at,
             "finished_at": job.finished_at,
             "total_scenarios": len(results),
+            "total_endpoints": len(unique_endpoints),
+            "test_duration": test_duration,
         }
-        
+
         report_path = await self.report_generator.generate_technical_report(results, job_info)
         logger.info(f"Report generated: {report_path}")
-        
+
         return report_path
     
     def _extract_base_url(self, parsed_spec: Dict) -> str:
@@ -548,27 +576,27 @@ class LoadTestService:
         return global_auth
     
     async def _generate_or_load_test_data(
-        self, 
-        endpoint: Endpoint, 
+        self,
+        endpoint: Endpoint,
         config: LoadTestConfiguration
     ) -> List[Dict]:
         """Generate or load test data for endpoint."""
         # Check if endpoint has custom data file
         for selected_ep in config.selected_endpoints:
-            if (selected_ep.get("path") == endpoint.endpoint_path and 
+            if (selected_ep.get("path") == endpoint.endpoint_path and
                 selected_ep.get("method") == endpoint.http_method):
-                
+
                 if "data_file" in selected_ep:
                     # Load custom data (implement file loading)
                     return await self._load_test_data_file(selected_ep["data_file"])
                 elif selected_ep.get("use_mock_data", True):
-                    # Generate mock data
+                    # Generate mock data with the endpoint's schema
                     return await self.mock_generator.generate_mock_data(
-                        endpoint, {}, count=100
+                        endpoint, endpoint.schema or {}, count=100
                     )
-        
-        # Default: generate mock data
-        return await self.mock_generator.generate_mock_data(endpoint, {}, count=100)
+
+        # Default: generate mock data with the endpoint's schema
+        return await self.mock_generator.generate_mock_data(endpoint, endpoint.schema or {}, count=100)
     
     async def _load_test_data_file(self, file_path: str) -> List[Dict]:
         """Load test data from file."""

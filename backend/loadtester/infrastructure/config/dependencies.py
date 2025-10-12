@@ -119,8 +119,8 @@ async def get_custom_load_test_service(
                 'degradation_response_time_multiplier': 2.0,
                 'degradation_error_rate_threshold': 0.05,
                 'default_test_duration': 60,  # Reduced from 300 for faster testing (total: 60s + 10s ramp-up + 10s ramp-down = 80s)
-                'initial_user_percentage': 10,
-                'user_increment_percentage': 20,
+                'initial_user_percentage': 0.1,  # 10% of expected load
+                'user_increment_percentage': 0.2,  # 20% increment per scenario
                 'stop_error_threshold': 0.1,
             }
         )

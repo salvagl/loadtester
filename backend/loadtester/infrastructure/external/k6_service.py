@@ -276,8 +276,10 @@ export default function() {{
         6. Has appropriate think time
         7. Is syntactically correct
         8. Follows K6 best practices
+        9. CRITICAL: Keep the EXACT same testData array as provided - DO NOT modify, replace, or simplify the test data
 
         CRITICAL: Do NOT use division operations that result in decimals. If you need to convert req/min to req/sec, use Math.floor() or Math.ceil().
+        CRITICAL: The testData array contains mock data generated from OpenAPI schema - preserve it exactly as provided, including all fields and values.
 
         Endpoint: {endpoint.http_method} {endpoint.endpoint_path}
         Expected volumetry: {endpoint.expected_volumetry} req/min

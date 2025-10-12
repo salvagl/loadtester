@@ -39,6 +39,7 @@ class EndpointRepository(EndpointRepositoryInterface):
                 auth_config=json.dumps(self._auth_config_to_dict(endpoint.auth_config)) if endpoint.auth_config else None,
                 headers_config=json.dumps(endpoint.headers_config) if endpoint.headers_config else None,
                 payload_template=json.dumps(endpoint.payload_template) if endpoint.payload_template else None,
+                schema=json.dumps(endpoint.schema) if endpoint.schema else None,
                 timeout_ms=endpoint.timeout_ms,
                 active=endpoint.active,
             )
@@ -135,6 +136,7 @@ class EndpointRepository(EndpointRepositoryInterface):
                     auth_config=json.dumps(self._auth_config_to_dict(endpoint.auth_config)) if endpoint.auth_config else None,
                     headers_config=json.dumps(endpoint.headers_config) if endpoint.headers_config else None,
                     payload_template=json.dumps(endpoint.payload_template) if endpoint.payload_template else None,
+                    schema=json.dumps(endpoint.schema) if endpoint.schema else None,
                     timeout_ms=endpoint.timeout_ms,
                     active=endpoint.active,
                 )
@@ -216,7 +218,15 @@ class EndpointRepository(EndpointRepositoryInterface):
                 payload_template = json.loads(model.payload_template)
             except json.JSONDecodeError as e:
                 logger.warning(f"Error parsing payload template: {str(e)}")
-        
+
+        # Parse schema
+        schema = None
+        if model.schema:
+            try:
+                schema = json.loads(model.schema)
+            except json.JSONDecodeError as e:
+                logger.warning(f"Error parsing schema: {str(e)}")
+
         return Endpoint(
             endpoint_id=model.endpoint_id,
             api_id=model.api_id,
@@ -229,6 +239,7 @@ class EndpointRepository(EndpointRepositoryInterface):
             auth_config=auth_config,
             headers_config=headers_config,
             payload_template=payload_template,
+            schema=schema,
             timeout_ms=model.timeout_ms,
             created_at=model.created_at,
             updated_at=model.updated_at,

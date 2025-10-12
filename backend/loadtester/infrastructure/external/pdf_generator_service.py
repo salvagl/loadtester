@@ -523,9 +523,9 @@ class ReportGeneratorService(ReportGeneratorServiceInterface):
                 'executive_summary': executive_summary.get('summary', ''),
                 'test_configuration': {
                     'total_scenarios': len(test_results),
-                    'total_endpoints': job_info.get('total_scenarios', 0),
+                    'total_endpoints': job_info.get('total_endpoints', 'N/A'),
                     'created_at': job_info.get('created_at', '').strftime('%Y-%m-%d %H:%M:%S') if job_info.get('created_at') else 'N/A',
-                    'test_duration': analysis.get('total_duration', 'N/A'),
+                    'test_duration': job_info.get('test_duration', 0),
                     'k6_version': 'v0.47.0',
                     'load_testing_strategy': 'Pruebas de Carga Progresivas',
                 },
@@ -757,10 +757,19 @@ class ReportGeneratorService(ReportGeneratorServiceInterface):
         return endpoint_summary
 
     def _classify_performance(self, result: TestResult) -> str:
-        """Classify endpoint performance based on response times."""
+        """Classify endpoint performance based on response times and error rates."""
         if not result.avg_response_time_ms:
             return 'Desconocido'
 
+        # Critical if error rate is very high
+        if result.error_rate_percent >= 50:
+            return 'Crítico'
+
+        # Degraded if error rate is moderate
+        if result.error_rate_percent >= 10:
+            return 'Degradado'
+
+        # Otherwise, classify by response time
         if result.avg_response_time_ms < 200:
             return 'Excelente'
         elif result.avg_response_time_ms < 500:

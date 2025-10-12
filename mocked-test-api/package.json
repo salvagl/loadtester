@@ -1,0 +1,13 @@
+{
+  "name": "mocked-test-api",
+  "version": "1.0.0",
+  "description": "Petstore OpenAPI mock using Stoplight Prism (static spec)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "http-proxy-middleware": "^2.0.6"
+  }
+}

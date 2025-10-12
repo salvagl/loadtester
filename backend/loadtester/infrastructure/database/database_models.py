@@ -37,9 +37,9 @@ class APIModel(Base):
 
 class EndpointModel(Base):
     """Endpoint entity model."""
-    
+
     __tablename__ = "endpoints"
-    
+
     endpoint_id = Column(Integer, primary_key=True, autoincrement=True)
     api_id = Column(Integer, ForeignKey("apis.api_id"), nullable=False)
     endpoint_name = Column(String(200), nullable=False)
@@ -52,11 +52,12 @@ class EndpointModel(Base):
     auth_config = Column(Text, nullable=True)  # JSON string with auth configuration
     headers_config = Column(Text, nullable=True)  # JSON string with headers
     payload_template = Column(Text, nullable=True)  # JSON string with payload template
+    schema = Column(Text, nullable=True)  # JSON string with OpenAPI schema for the endpoint
     timeout_ms = Column(Integer, default=30000, nullable=False)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
     active = Column(Boolean, default=True, nullable=False)
-    
+
     # Relationships
     api = relationship("APIModel", back_populates="endpoints")
     test_scenarios = relationship("TestScenarioModel", back_populates="endpoint", cascade="all, delete-orphan")
