@@ -122,6 +122,7 @@ async def get_custom_load_test_service(
                 'initial_user_percentage': 0.1,  # 10% of expected load
                 'user_increment_percentage': 0.2,  # 20% increment per scenario
                 'stop_error_threshold': 0.1,
+                'max_scenarios_per_endpoint': 5,  # Max scenarios to generate per endpoint (set to 5 for faster testing, 20 for production)
             }
         )
 

@@ -106,16 +106,27 @@ class K6ScriptGeneratorService(K6ScriptGeneratorServiceInterface):
         """Create basic K6 script template."""
         # Ensure all numeric values are integers for K6 compatibility
         concurrent_users = self._ensure_integer(scenario_config.get("concurrent_users", 1))
+        target_volumetry = self._ensure_integer(scenario_config.get("target_volumetry", 60))
         duration = self._ensure_integer(scenario_config.get("duration", 60))
         ramp_up = self._ensure_integer(scenario_config.get("ramp_up", 10))
         ramp_down = self._ensure_integer(scenario_config.get("ramp_down", 10))
-        
+
+        # Calculate think time (sleep) to achieve target volumetry
+        # Formula: sleep_time = (concurrent_users * 60) / target_volumetry
+        # This ensures the combined load of all users matches the target volumetry
+        if target_volumetry > 0 and concurrent_users > 0:
+            sleep_time = (concurrent_users * 60.0) / target_volumetry
+            # Ensure at least 0.1 seconds between requests
+            sleep_time = max(0.1, sleep_time)
+        else:
+            sleep_time = 1.0
+
         # Build auth headers
         auth_headers = self._build_auth_headers(endpoint)
-        
+
         # Build request body
         request_body = self._build_request_body(endpoint, test_data)
-        
+
         # Build URL with parameters
         url_template = self._build_url_template(endpoint, test_data)
 
@@ -179,9 +190,10 @@ export default function() {{
     
     // Record errors
     errorRate.add(!result);
-    
-    // Think time
-    sleep(1);
+
+    // Think time - calculated to achieve target volumetry
+    // sleep_time = (concurrent_users * 60) / target_volumetry
+    sleep({sleep_time});
 }}
 """
         return script.strip()

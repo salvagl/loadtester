@@ -78,10 +78,84 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
             
             story.append(Paragraph(content.get('title', 'LoadTester Report'), title_style))
             story.append(Spacer(1, 12))
-            
+
+            # Add introduction section with interpretation guide
+            story.append(Paragraph("1. Introducción", styles['Heading2']))
+
+            introduction_text = """
+            <b>Acerca de este informe:</b><br/><br/>
+
+            Este informe presenta los resultados de las pruebas de carga progresivas realizadas sobre los endpoints seleccionados.
+            Las pruebas están diseñadas para identificar el punto de degradación del rendimiento del sistema bajo cargas incrementales.<br/><br/>
+
+            <b>Generación de Escenarios de Carga:</b><br/><br/>
+
+            Para cada endpoint, se generan 5 escenarios de prueba con carga progresiva siguiendo un patrón estándar:
+            <br/>• <b>Escenario 1 (50% carga):</b> Warm-up - Verifica funcionamiento básico bajo carga reducida
+            <br/>• <b>Escenario 2 (75% carga):</b> Pre-carga - Confirma que el sistema está preparado
+            <br/>• <b>Escenario 3 (100% carga):</b> Carga objetivo - Punto crítico de referencia (debe funcionar correctamente)
+            <br/>• <b>Escenario 4 (150% carga):</b> Margen de seguridad - Verifica capacidad para picos de tráfico
+            <br/>• <b>Escenario 5 (200% carga):</b> Prueba de estrés - Identifica el punto de ruptura del sistema<br/><br/>
+
+            <b>Ejemplo práctico:</b> Si un endpoint tiene configurada una carga esperada de 10 usuarios concurrentes y 100 req/min:
+            <br/>• Escenario 1: 5 usuarios, 50 req/min
+            <br/>• Escenario 2: 8 usuarios, 75 req/min (redondeado)
+            <br/>• Escenario 3: 10 usuarios, 100 req/min
+            <br/>• Escenario 4: 15 usuarios, 150 req/min
+            <br/>• Escenario 5: 20 usuarios, 200 req/min<br/><br/>
+
+            Las pruebas se ejecutan <b>secuencialmente</b> (un endpoint después del otro) para aislar problemas
+            y evitar interferencias entre tests.<br/><br/>
+
+            <b>Cómo se Calcula la Carga:</b><br/><br/>
+
+            La prueba utiliza dos parámetros clave que trabajan conjuntamente:
+            <br/>• <b>Usuarios Concurrentes:</b> Número de usuarios virtuales (VUs) ejecutando peticiones simultáneamente
+            <br/>• <b>Volumetría (req/min):</b> Total de peticiones por minuto de TODOS los usuarios combinados<br/><br/>
+
+            El sistema calcula automáticamente el tiempo de espera entre peticiones para cada usuario:
+            <br/><b>Tiempo de espera = (Usuarios × 60) / Volumetría objetivo</b><br/><br/>
+
+            <b>Ejemplo con 10 usuarios y 100 req/min:</b>
+            <br/>• Tiempo de espera = (10 × 60) / 100 = 6 segundos
+            <br/>• Cada usuario hace 1 petición cada 6 segundos
+            <br/>• 10 usuarios × 10 peticiones/minuto = 100 peticiones/minuto (objetivo cumplido)<br/><br/>
+
+            <b>Ejemplo con 5 usuarios y 50 req/min:</b>
+            <br/>• Tiempo de espera = (5 × 60) / 50 = 6 segundos
+            <br/>• Cada usuario hace 1 petición cada 6 segundos
+            <br/>• 5 usuarios × 10 peticiones/minuto = 50 peticiones/minuto<br/><br/>
+
+            Esto garantiza que la carga total del sistema coincida exactamente con la volumetría configurada.<br/><br/>
+
+            <b>Interpretación de Métricas:</b><br/><br/>
+
+            • <b>Percentil 95 (p95):</b> Indica que el 95% de las peticiones fueron procesadas en un tiempo igual o menor al valor mostrado.
+            Es una métrica más representativa del rendimiento real que el promedio, ya que excluye outliers extremos pero captura
+            la experiencia de la gran mayoría de los usuarios.<br/><br/>
+
+            • <b>Tiempos de Respuesta:</b> Se mide el tiempo desde que se envía la petición hasta que se recibe la respuesta completa.
+            <br/>  - Excelente: < 200ms
+            <br/>  - Bueno: 200-500ms
+            <br/>  - Degradado: 500-1000ms
+            <br/>  - Crítico: > 1000ms<br/><br/>
+
+            • <b>Tasa de Errores:</b> Porcentaje de peticiones que fallan (códigos 4xx, 5xx o timeouts).
+            <br/>  - Aceptable: < 5%
+            <br/>  - Degradado: 5-10%
+            <br/>  - Crítico: > 10%<br/><br/>
+
+            • <b>Throughput (Peticiones/seg):</b> Capacidad de procesamiento del sistema. Una caída en throughput
+            bajo carga creciente indica saturación del sistema.
+            """
+
+            story.append(Paragraph(introduction_text, styles['Normal']))
+            story.append(Spacer(1, 12))
+            story.append(PageBreak())
+
             # Add executive summary
             if 'executive_summary' in content:
-                story.append(Paragraph("Resumen Ejecutivo", styles['Heading2']))
+                story.append(Paragraph("2. Resumen Ejecutivo", styles['Heading2']))
                 story.append(Paragraph(content['executive_summary'], styles['Normal']))
                 story.append(Spacer(1, 12))
             
@@ -115,35 +189,7 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
                 story.append(config_table)
                 story.append(Spacer(1, 12))
             
-            # Add charts
-            if 'charts' in content:
-                story.append(Paragraph("Análisis de Rendimiento", styles['Heading2']))
-                for chart_path in content['charts']:
-                    if os.path.exists(chart_path):
-                        img = Image(chart_path, width=6*inch, height=4*inch)
-                        story.append(img)
-                        story.append(Spacer(1, 12))
-            
-            # Add explanatory section for charts
-            if 'charts' in content and content['charts']:
-                story.append(Paragraph("Interpretación de Gráficas", styles['Heading3']))
-
-                interpretation_text = """
-                <b>Cómo interpretar las gráficas de rendimiento:</b><br/><br/>
-
-                <b>1. Gráfica de Tiempos de Respuesta:</b> Muestra la evolución de los tiempos de respuesta a medida que aumenta la carga.
-                Las líneas de umbrales (naranja y roja) indican niveles de degradación. Si las líneas de medición superan estos umbrales,
-                el sistema está experimentando degradación del rendimiento.<br/><br/>
-
-                <b>2. Gráfica de Capacidad de Procesamiento:</b> Representa cuántas peticiones por segundo puede procesar el sistema.
-                Una caída en el throughput indica que el sistema está alcanzando su límite de capacidad.<br/><br/>
-
-                <b>3. Gráfica de Tasa de Errores:</b> Muestra el porcentaje de peticiones que fallan. Los umbrales al 5% y 10%
-                indican niveles aceptables y críticos respectivamente. Valores por encima del 10% requieren atención inmediata.
-                """
-
-                story.append(Paragraph(interpretation_text, styles['Normal']))
-                story.append(Spacer(1, 12))
+            # Charts are now included within each endpoint section (section 4), not globally
 
             # Degradation Analysis Section
             if 'degradation_analysis' in content:
@@ -161,46 +207,7 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
                 story.append(Paragraph(degradation_text, styles['Normal']))
                 story.append(Spacer(1, 12))
 
-            # Endpoint Summary Section
-            if 'endpoint_summary' in content:
-                story.append(Paragraph("Análisis por Endpoint", styles['Heading2']))
-                endpoint_data = content['endpoint_summary']
-
-                # Summary paragraph
-                story.append(Paragraph(endpoint_data.get('summary', ''), styles['Normal']))
-                story.append(Spacer(1, 12))
-
-                # Endpoint performance table
-                if endpoint_data.get('endpoints'):
-                    endpoint_table_data = [
-                        ['Endpoint', 'Método', 'Resp. Promedio (ms)', 'Tasa Éxito (%)', 'Clasificación', 'Degradación']
-                    ]
-
-                    for ep in endpoint_data['endpoints']:
-                        degradation_status = "⚠️ SÍ" if ep['degradation_detected'] else "✓ NO"
-                        endpoint_table_data.append([
-                            ep['endpoint'],
-                            ep['method'],
-                            f"{ep['avg_response_time']:.1f}",
-                            f"{ep['success_rate']:.1f}",
-                            ep['performance_classification'],
-                            degradation_status
-                        ])
-
-                    endpoint_table = Table(endpoint_table_data)
-                    endpoint_table.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.navy),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 0), (-1, 0), 12),
-                        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                        ('BACKGROUND', (0, 1), (-1, -1), colors.lightblue),
-                        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                    ]))
-
-                    story.append(endpoint_table)
-                    story.append(Spacer(1, 12))
+            # Endpoint Summary Section removed - information is now in section 4 with details per endpoint
 
             # Performance Recommendations Section (Additional value)
             if 'recommendations' in content:
@@ -216,37 +223,84 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
 
                 story.append(Spacer(1, 12))
 
-            # Add detailed results
-            if 'detailed_results' in content:
+            # Add detailed results grouped by endpoint
+            if 'endpoint_results' in content:
                 story.append(PageBreak())
-                story.append(Paragraph("Resultados Detallados de Pruebas", styles['Heading2']))
-                
-                for result in content['detailed_results']:
-                    story.append(Paragraph(f"Escenario: {result.get('name', 'Desconocido')}", styles['Heading3']))
+                story.append(Paragraph("3. Resultados Detallados por Endpoint", styles['Heading2']))
 
-                    result_data = [
-                        ['Métrica', 'Valor'],
-                        ['Tiempo de Respuesta Promedio', f"{result.get('avg_response_time', 'N/A')} ms"],
-                        ['Percentil 95', f"{result.get('p95_response_time', 'N/A')} ms"],
-                        ['Total de Peticiones', str(result.get('total_requests', 'N/A'))],
-                        ['Tasa de Éxito', f"{result.get('success_rate', 'N/A')}%"],
-                        ['Peticiones por Segundo', f"{result.get('rps', 'N/A')}"],
-                    ]
-                    
-                    result_table = Table(result_data)
-                    result_table.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.lightblue),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 0), (-1, 0), 12),
-                        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-                        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                    ]))
-                    
-                    story.append(result_table)
+                for endpoint_info in content['endpoint_results']:
+                    # Endpoint title and URL
+                    story.append(PageBreak())
+                    story.append(Paragraph(
+                        f"Endpoint: {endpoint_info['method']} {endpoint_info['path']}",
+                        styles['Heading3']
+                    ))
+                    story.append(Spacer(1, 6))
+
+                    # URL and CURL example
+                    url_text = f"<b>URL Completa:</b> {endpoint_info['full_url']}"
+                    story.append(Paragraph(url_text, styles['Normal']))
+                    story.append(Spacer(1, 6))
+
+                    curl_style = ParagraphStyle(
+                        'Code',
+                        parent=styles['Normal'],
+                        fontName='Courier',
+                        fontSize=9,
+                        textColor=colors.HexColor('#333333'),
+                        backColor=colors.HexColor('#f5f5f5'),
+                        borderPadding=8,
+                        borderWidth=1,
+                        borderColor=colors.grey
+                    )
+
+                    curl_text = f"<b>Ejemplo CURL:</b><br/>{endpoint_info['curl_example']}"
+                    story.append(Paragraph(curl_text, curl_style))
                     story.append(Spacer(1, 12))
+
+                    # Add charts for this endpoint
+                    if 'chart_paths' in endpoint_info and endpoint_info['chart_paths']:
+                        story.append(Paragraph("Gráficas de Rendimiento:", styles['Heading4']))
+                        for chart_path in endpoint_info['chart_paths']:
+                            if os.path.exists(chart_path):
+                                img = Image(chart_path, width=6*inch, height=4*inch)
+                                story.append(img)
+                                story.append(Spacer(1, 12))
+
+                    # Scenarios for this endpoint
+                    story.append(Paragraph("Resultados Detallados por Escenario:", styles['Heading4']))
+
+                    for scenario_result in endpoint_info['scenarios']:
+                        story.append(Paragraph(f"• {scenario_result.get('name', 'Desconocido')}", styles['Normal']))
+                        story.append(Spacer(1, 4))
+
+                        result_data = [
+                            ['Métrica', 'Valor Obtenido', 'Umbral'],
+                            ['Usuarios Concurrentes', str(scenario_result.get('concurrent_users', 'N/A')), scenario_result.get('expected_users', 'N/A')],
+                            ['Volumetría (req/min)', str(scenario_result.get('target_volumetry', 'N/A')), scenario_result.get('expected_volumetry', 'N/A')],
+                            ['Tiempo Respuesta Promedio', f"{scenario_result.get('avg_response_time', 'N/A')} ms", '< 1000 ms'],
+                            ['Percentil 95', f"{scenario_result.get('p95_response_time', 'N/A')} ms", '< 500 ms'],
+                            ['Total de Peticiones', str(scenario_result.get('total_requests', 'N/A')), '-'],
+                            ['Tasa de Éxito', f"{scenario_result.get('success_rate', 'N/A')}%", '> 90%'],
+                            ['Tasa de Error', f"{scenario_result.get('error_rate', 'N/A')}%", '< 10%'],
+                            ['Peticiones por Segundo', f"{scenario_result.get('rps', 'N/A')}",  '-'],
+                        ]
+
+                        result_table = Table(result_data, colWidths=[3.5*inch, 2*inch, 1.5*inch])
+                        result_table.setStyle(TableStyle([
+                            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
+                            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                            ('FONTSIZE', (0, 0), (-1, 0), 11),
+                            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightblue])
+                        ]))
+
+                        story.append(result_table)
+                        story.append(Spacer(1, 12))
             
             # Note: recommendations section already handled above in Spanish section
             # This duplicate section in English has been removed
@@ -517,6 +571,11 @@ class ReportGeneratorService(ReportGeneratorServiceInterface):
             # Generate charts
             chart_paths = await self.pdf_generator.generate_charts(chart_data)
             
+            # Prepare endpoint results if endpoint details are available
+            endpoint_results = []
+            if 'endpoint_details' in job_info and job_info['endpoint_details']:
+                endpoint_results = await self._prepare_endpoint_results(job_info['endpoint_details'])
+
             # Prepare PDF content
             content = {
                 'title': f"Informe de Pruebas de Rendimiento - LoadTester",
@@ -530,7 +589,7 @@ class ReportGeneratorService(ReportGeneratorServiceInterface):
                     'load_testing_strategy': 'Pruebas de Carga Progresivas',
                 },
                 'charts': chart_paths,
-                'detailed_results': self._format_detailed_results(test_results),
+                'endpoint_results': endpoint_results,  # New structured endpoint results
                 'degradation_analysis': degradation_points,
                 'performance_analysis': analysis,
                 'endpoint_summary': self._generate_endpoint_summary(test_results),
@@ -834,3 +893,150 @@ class ReportGeneratorService(ReportGeneratorServiceInterface):
             ])
 
         return recommendations
+
+    async def _prepare_endpoint_results(self, endpoint_details: Dict) -> List[Dict]:
+        """Prepare endpoint results for PDF generation."""
+        endpoint_results = []
+
+        for endpoint_key, details in endpoint_details.items():
+            endpoint = details['endpoint']
+            api = details['api']
+            scenarios = details['scenarios']
+
+            # Build full URL
+            base_url = api.base_url if api else 'http://example.com'
+            full_url = f"{base_url}{endpoint.endpoint_path}"
+
+            # Build CURL example
+            curl_example = self._build_curl_example(endpoint, api)
+
+            # Prepare scenario results and collect results for charts
+            scenario_results = []
+            results_for_charts = []
+            for scenario_data in scenarios:
+                scenario = scenario_data['scenario']
+                result = scenario_data['result']
+                results_for_charts.append(result)
+
+                scenario_results.append({
+                    'name': scenario.scenario_name,
+                    'concurrent_users': scenario.concurrent_users,
+                    'expected_users': str(endpoint.expected_concurrent_users),
+                    'target_volumetry': scenario.target_volumetry,
+                    'expected_volumetry': str(endpoint.expected_volumetry),
+                    'avg_response_time': f"{result.avg_response_time_ms or 0:.2f}",
+                    'p95_response_time': f"{result.p95_response_time_ms or 0:.2f}",
+                    'total_requests': result.total_requests or 0,
+                    'success_rate': f"{result.success_rate_percent or 0:.2f}",
+                    'error_rate': f"{result.error_rate_percent or 0:.2f}",
+                    'rps': f"{result.requests_per_second or 0:.2f}",
+                })
+
+            # Generate charts for this endpoint
+            chart_data = self._prepare_chart_data_for_endpoint(results_for_charts)
+            chart_paths = await self.pdf_generator.generate_charts(chart_data)
+
+            endpoint_results.append({
+                'method': endpoint.http_method,
+                'path': endpoint.endpoint_path,
+                'full_url': full_url,
+                'curl_example': curl_example,
+                'scenarios': scenario_results,
+                'chart_paths': chart_paths  # Add charts for this endpoint
+            })
+
+        return endpoint_results
+
+    def _prepare_chart_data_for_endpoint(self, test_results: List) -> Dict:
+        """Prepare chart data for a specific endpoint."""
+        chart_data = {
+            'response_times': [],
+            'throughput': [],
+            'error_rates': [],
+        }
+
+        for i, result in enumerate(test_results):
+            chart_data['response_times'].append({
+                'scenario': f'Escenario {i+1}',
+                'avg_response_time': result.avg_response_time_ms or 0,
+                'p95_response_time': result.p95_response_time_ms or 0,
+            })
+
+            chart_data['throughput'].append({
+                'scenario': f'Escenario {i+1}',
+                'requests_per_second': result.requests_per_second or 0,
+            })
+
+            chart_data['error_rates'].append({
+                'scenario': f'Escenario {i+1}',
+                'error_rate': result.error_rate_percent or 0,
+            })
+
+        return chart_data
+
+    def _build_curl_example(self, endpoint, api) -> str:
+        """Build CURL example for endpoint."""
+        base_url = api.base_url if api else 'http://example.com'
+        full_url = f"{base_url}{endpoint.endpoint_path}"
+        method = endpoint.http_method.upper()
+
+        curl_parts = [f"curl -X {method}"]
+
+        # Add headers
+        curl_parts.append("-H 'Content-Type: application/json'")
+
+        # Add auth if present
+        if endpoint.auth_config:
+            if endpoint.auth_config.auth_type.value == "bearer_token":
+                curl_parts.append(f"-H 'Authorization: Bearer YOUR_TOKEN'")
+            elif endpoint.auth_config.auth_type.value == "api_key":
+                header_name = endpoint.auth_config.header_name or "X-API-Key"
+                curl_parts.append(f"-H '{header_name}: YOUR_API_KEY'")
+
+        # Add body for POST/PUT/PATCH
+        if method in ["POST", "PUT", "PATCH"]:
+            # Generate example body from schema if available
+            example_body = "{}"
+            if endpoint.schema and 'requestBody' in endpoint.schema:
+                try:
+                    content = endpoint.schema['requestBody'].get('content', {})
+                    json_schema = content.get('application/json', {}).get('schema', {})
+                    if 'properties' in json_schema:
+                        example_body = "{\n"
+                        properties = json_schema['properties']
+                        required = json_schema.get('required', [])
+                        for prop_name, prop_schema in list(properties.items())[:3]:  # Show max 3 fields
+                            example_val = self._get_example_value(prop_name, prop_schema, prop_name in required)
+                            example_body += f'  "{prop_name}": {example_val},\n'
+                        example_body = example_body.rstrip(',\n') + "\n}"
+                except Exception as e:
+                    logger.warning(f"Could not generate example body: {e}")
+
+            curl_parts.append(f"-d '{example_body}'")
+
+        curl_parts.append(f"'{full_url}'")
+
+        return " \\\n  ".join(curl_parts)
+
+    def _get_example_value(self, prop_name: str, prop_schema: Dict, is_required: bool) -> str:
+        """Get example value for a property based on its schema."""
+        prop_type = prop_schema.get('type', 'string')
+
+        if 'example' in prop_schema:
+            value = prop_schema['example']
+            if isinstance(value, str):
+                return f'"{value}"'
+            return str(value)
+
+        if prop_type == 'string':
+            return f'"example_{prop_name}"'
+        elif prop_type == 'integer' or prop_type == 'number':
+            return '123'
+        elif prop_type == 'boolean':
+            return 'true'
+        elif prop_type == 'array':
+            return '["item1", "item2"]'
+        elif prop_type == 'object':
+            return '{}'
+        else:
+            return '"value"'

@@ -260,25 +260,25 @@ class LoadTestService:
         endpoint: Endpoint,
         test_data: List[Dict]
     ) -> List[TestScenario]:
-        """Create incremental load scenarios for an endpoint."""
-        import math
+        """Create incremental load scenarios for an endpoint.
+
+        Scenarios are created at specific percentages of expected load:
+        50%, 75%, 100%, 150%, 200%
+        """
         scenarios = []
 
-        # Start with baseline scenario (10% of expected load)
-        initial_users = max(1, int(endpoint.expected_concurrent_users *
-                                  self.degradation_settings["initial_user_percentage"]))
-        initial_volumetry = max(1, int(endpoint.expected_volumetry *
-                                     self.degradation_settings["initial_user_percentage"]))
+        # Define load percentages for scenarios (standard load testing pattern)
+        load_percentages = [50, 75, 100, 150, 200]
 
-        current_users = initial_users
-        current_volumetry = initial_volumetry
-        scenario_number = 1
+        for load_percentage in load_percentages:
+            # Calculate users and volumetry for this load percentage
+            current_users = max(1, int(endpoint.expected_concurrent_users * (load_percentage / 100)))
+            current_volumetry = max(1, int(endpoint.expected_volumetry * (load_percentage / 100)))
 
-        while scenario_number <= 10:  # Max 10 scenarios per endpoint
             scenario = TestScenario(
                 endpoint_id=endpoint.endpoint_id,
-                scenario_name=f"{endpoint.endpoint_name} - Scenario {scenario_number}",
-                description=f"Load test with {current_users} users, {current_volumetry} req/min",
+                scenario_name=f"{endpoint.endpoint_name} - {load_percentage}% carga esperada ({current_users} users)",
+                description=f"Load test at {load_percentage}% of expected load: {current_users} users, {current_volumetry} req/min",
                 target_volumetry=current_volumetry,
                 concurrent_users=current_users,
                 duration_seconds=self.degradation_settings.get("default_test_duration", 60),
@@ -290,20 +290,6 @@ class LoadTestService:
 
             scenario = await self.scenario_repository.create(scenario)
             scenarios.append(scenario)
-
-            # Increment for next scenario using ceiling to ensure at least +1
-            increment = self.degradation_settings["user_increment_percentage"]
-            next_users = current_users * (1 + increment)
-            next_volumetry = current_volumetry * (1 + increment)
-
-            # Use ceiling to ensure we always increment at least by 1
-            current_users = max(current_users + 1, math.ceil(next_users))
-            current_volumetry = max(current_volumetry + 1, math.ceil(next_volumetry))
-            scenario_number += 1
-
-            # Stop if we exceed reasonable limits or reached expected load
-            if current_users > endpoint.expected_concurrent_users * 1.5:
-                break
 
         return scenarios
     
@@ -384,6 +370,7 @@ class LoadTestService:
             # Generate K6 script
             scenario_config = {
                 "concurrent_users": scenario.concurrent_users,
+                "target_volumetry": scenario.target_volumetry,
                 "duration": scenario.duration_seconds,
                 "ramp_up": scenario.ramp_up_seconds,
                 "ramp_down": scenario.ramp_down_seconds,
@@ -462,8 +449,8 @@ class LoadTestService:
             duration_delta = job.finished_at - job.started_at
             test_duration = int(duration_delta.total_seconds())
 
-        # Count unique endpoints tested by querying executions
-        unique_endpoints = set()
+        # Group results by endpoint and collect endpoint details
+        endpoint_details = {}
         for result in results:
             if result.execution_id:
                 try:
@@ -471,7 +458,28 @@ class LoadTestService:
                     if execution and execution.scenario_id:
                         scenario = await self.scenario_repository.get_by_id(execution.scenario_id)
                         if scenario and scenario.endpoint_id:
-                            unique_endpoints.add(scenario.endpoint_id)
+                            endpoint = await self.endpoint_repository.get_by_id(scenario.endpoint_id)
+                            if endpoint:
+                                endpoint_key = f"{endpoint.http_method}_{endpoint.endpoint_path}"
+
+                                if endpoint_key not in endpoint_details:
+                                    # Get API info for base URL
+                                    api = None
+                                    if endpoint.api_id:
+                                        api = await self.api_repository.get_by_id(endpoint.api_id)
+
+                                    endpoint_details[endpoint_key] = {
+                                        'endpoint': endpoint,
+                                        'api': api,
+                                        'scenarios': []
+                                    }
+
+                                # Add scenario result
+                                endpoint_details[endpoint_key]['scenarios'].append({
+                                    'scenario': scenario,
+                                    'execution': execution,
+                                    'result': result
+                                })
                 except Exception as e:
                     logger.warning(f"Could not get endpoint for result {result.result_id}: {e}")
 
@@ -481,8 +489,9 @@ class LoadTestService:
             "started_at": job.started_at,
             "finished_at": job.finished_at,
             "total_scenarios": len(results),
-            "total_endpoints": len(unique_endpoints),
+            "total_endpoints": len(endpoint_details),
             "test_duration": test_duration,
+            "endpoint_details": endpoint_details,  # Pass structured endpoint data
         }
 
         report_path = await self.report_generator.generate_technical_report(results, job_info)
