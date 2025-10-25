@@ -90,16 +90,18 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
 
             <b>Generación de Escenarios de Carga:</b><br/><br/>
 
-            Para cada endpoint, se generan 5 escenarios de prueba con carga progresiva siguiendo un patrón estándar:
-            <br/>• <b>Escenario 1 (50% carga):</b> Warm-up - Verifica funcionamiento básico bajo carga reducida
+            Para cada endpoint, se generan 6 escenarios de prueba con carga progresiva siguiendo un patrón estándar:
+            <br/>• <b>Escenario WARM-UP (25% carga):</b> Inicializa conexiones, caches y recursos del sistema
+            <br/>• <b>Escenario 1 (50% carga):</b> Carga reducida - Verifica funcionamiento básico
             <br/>• <b>Escenario 2 (75% carga):</b> Pre-carga - Confirma que el sistema está preparado
             <br/>• <b>Escenario 3 (100% carga):</b> Carga objetivo - Punto crítico de referencia (debe funcionar correctamente)
             <br/>• <b>Escenario 4 (150% carga):</b> Margen de seguridad - Verifica capacidad para picos de tráfico
             <br/>• <b>Escenario 5 (200% carga):</b> Prueba de estrés - Identifica el punto de ruptura del sistema<br/><br/>
 
             <b>Ejemplo práctico:</b> Si un endpoint tiene configurada una carga esperada de 10 usuarios concurrentes y 100 req/min:
+            <br/>• Warm-up: 3 usuarios, 25 req/min
             <br/>• Escenario 1: 5 usuarios, 50 req/min
-            <br/>• Escenario 2: 8 usuarios, 75 req/min (redondeado)
+            <br/>• Escenario 2: 8 usuarios, 75 req/min
             <br/>• Escenario 3: 10 usuarios, 100 req/min
             <br/>• Escenario 4: 15 usuarios, 150 req/min
             <br/>• Escenario 5: 20 usuarios, 200 req/min<br/><br/>
@@ -164,10 +166,16 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
                 story.append(Paragraph("Configuración de Prueba", styles['Heading2']))
                 config_data = content['test_configuration']
 
+                # Format duration properly
+                duration_seconds = config_data.get('test_duration', 0)
+                duration_minutes = duration_seconds // 60
+                duration_secs = duration_seconds % 60
+                duration_str = f"{duration_minutes}m {duration_secs}s" if duration_minutes > 0 else f"{duration_secs}s"
+
                 config_table_data = [
                     ['Parámetro', 'Valor'],
                     ['Total Escenarios', str(config_data.get('total_scenarios', 'N/A'))],
-                    ['Duración Prueba', f"{config_data.get('test_duration', 'N/A')} segundos"],
+                    ['Duración Prueba', duration_str],
                     ['Endpoints API', str(config_data.get('total_endpoints', 'N/A'))],
                     ['Creado el', config_data.get('created_at', 'N/A')],
                     ['Versión K6', config_data.get('k6_version', 'N/A')],
@@ -228,9 +236,11 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
                 story.append(PageBreak())
                 story.append(Paragraph("3. Resultados Detallados por Endpoint", styles['Heading2']))
 
-                for endpoint_info in content['endpoint_results']:
+                for i, endpoint_info in enumerate(content['endpoint_results']):
                     # Endpoint title and URL
-                    story.append(PageBreak())
+                    # Only add page break after the first endpoint
+                    if i > 0:
+                        story.append(PageBreak())
                     story.append(Paragraph(
                         f"Endpoint: {endpoint_info['method']} {endpoint_info['path']}",
                         styles['Heading3']
@@ -274,8 +284,15 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
                         story.append(Paragraph(f"• {scenario_result.get('name', 'Desconocido')}", styles['Normal']))
                         story.append(Spacer(1, 4))
 
+                        # Add human-readable description
+                        users = scenario_result.get('concurrent_users', 'N/A')
+                        volumetry = scenario_result.get('target_volumetry', 'N/A')
+                        description = f"   {users} usuarios concurrentes lanzarán {volumetry} req/min durante 60 segundos"
+                        story.append(Paragraph(description, styles['Normal']))
+                        story.append(Spacer(1, 8))
+
                         result_data = [
-                            ['Métrica', 'Valor Obtenido', 'Umbral'],
+                            ['Métrica', 'Valor prueba de carga', 'Umbral'],
                             ['Usuarios Concurrentes', str(scenario_result.get('concurrent_users', 'N/A')), scenario_result.get('expected_users', 'N/A')],
                             ['Volumetría (req/min)', str(scenario_result.get('target_volumetry', 'N/A')), scenario_result.get('expected_volumetry', 'N/A')],
                             ['Tiempo Respuesta Promedio', f"{scenario_result.get('avg_response_time', 'N/A')} ms", '< 1000 ms'],
@@ -933,7 +950,7 @@ class ReportGeneratorService(ReportGeneratorServiceInterface):
                 })
 
             # Generate charts for this endpoint
-            chart_data = self._prepare_chart_data_for_endpoint(results_for_charts)
+            chart_data = self._prepare_chart_data_for_endpoint(results_for_charts, scenarios)
             chart_paths = await self.pdf_generator.generate_charts(chart_data)
 
             endpoint_results.append({
@@ -947,7 +964,7 @@ class ReportGeneratorService(ReportGeneratorServiceInterface):
 
         return endpoint_results
 
-    def _prepare_chart_data_for_endpoint(self, test_results: List) -> Dict:
+    def _prepare_chart_data_for_endpoint(self, test_results: List, scenarios: List) -> Dict:
         """Prepare chart data for a specific endpoint."""
         chart_data = {
             'response_times': [],
@@ -955,20 +972,28 @@ class ReportGeneratorService(ReportGeneratorServiceInterface):
             'error_rates': [],
         }
 
-        for i, result in enumerate(test_results):
+        for i, (result, scenario_data) in enumerate(zip(test_results, scenarios)):
+            scenario = scenario_data['scenario']
+
+            # Detect if it's warm-up scenario
+            if 'WARM-UP' in scenario.scenario_name:
+                label = 'Warm-up'
+            else:
+                label = f'Escenario {i}' if i > 0 else 'Escenario 1'
+
             chart_data['response_times'].append({
-                'scenario': f'Escenario {i+1}',
+                'scenario': label,
                 'avg_response_time': result.avg_response_time_ms or 0,
                 'p95_response_time': result.p95_response_time_ms or 0,
             })
 
             chart_data['throughput'].append({
-                'scenario': f'Escenario {i+1}',
+                'scenario': label,
                 'requests_per_second': result.requests_per_second or 0,
             })
 
             chart_data['error_rates'].append({
-                'scenario': f'Escenario {i+1}',
+                'scenario': label,
                 'error_rate': result.error_rate_percent or 0,
             })
 

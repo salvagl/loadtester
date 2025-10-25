@@ -263,22 +263,29 @@ class LoadTestService:
         """Create incremental load scenarios for an endpoint.
 
         Scenarios are created at specific percentages of expected load:
-        50%, 75%, 100%, 150%, 200%
+        25% (warm-up), 50%, 75%, 100%, 150%, 200%
         """
         scenarios = []
 
-        # Define load percentages for scenarios (standard load testing pattern)
-        load_percentages = [50, 75, 100, 150, 200]
+        # Define load percentages for scenarios (including warm-up)
+        # 25% is warm-up to initialize connections, caches, etc.
+        load_percentages = [25, 50, 75, 100, 150, 200]
 
         for load_percentage in load_percentages:
             # Calculate users and volumetry for this load percentage
             current_users = max(1, int(endpoint.expected_concurrent_users * (load_percentage / 100)))
             current_volumetry = max(1, int(endpoint.expected_volumetry * (load_percentage / 100)))
 
+            # Mark warm-up scenario
+            is_warmup = (load_percentage == 25)
+            scenario_name = f"{endpoint.endpoint_name} - {load_percentage}% carga esperada ({current_users} users)"
+            if is_warmup:
+                scenario_name = f"{endpoint.endpoint_name} - WARM-UP {load_percentage}% ({current_users} users)"
+
             scenario = TestScenario(
                 endpoint_id=endpoint.endpoint_id,
-                scenario_name=f"{endpoint.endpoint_name} - {load_percentage}% carga esperada ({current_users} users)",
-                description=f"Load test at {load_percentage}% of expected load: {current_users} users, {current_volumetry} req/min",
+                scenario_name=scenario_name,
+                description=f"{'Warm-up: ' if is_warmup else ''}Load test at {load_percentage}% of expected load: {current_users} users, {current_volumetry} req/min",
                 target_volumetry=current_volumetry,
                 concurrent_users=current_users,
                 duration_seconds=self.degradation_settings.get("default_test_duration", 60),
@@ -443,11 +450,14 @@ class LoadTestService:
         """Generate final PDF report."""
         logger.info("Generating final report")
 
-        # Calculate test duration
+        # Calculate test duration (use current time since job hasn't been marked as finished yet)
         test_duration = 0
-        if job.finished_at and job.started_at:
-            duration_delta = job.finished_at - job.started_at
+        if job.started_at:
+            duration_delta = datetime.utcnow() - job.started_at
             test_duration = int(duration_delta.total_seconds())
+            logger.info(f"Test duration calculated: {test_duration} seconds (from {job.started_at} to now)")
+        else:
+            logger.warning(f"Cannot calculate test duration - started_at is None")
 
         # Group results by endpoint and collect endpoint details
         endpoint_details = {}
