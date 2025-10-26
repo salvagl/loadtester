@@ -600,22 +600,32 @@ class LoadTestService:
         config: LoadTestConfiguration
     ) -> List[Dict]:
         """Generate or load test data for endpoint."""
+        # Calculate how many unique data records we need
+        # For POST/PUT/PATCH endpoints with potential uniqueness constraints (like email)
+        # we need enough data for the maximum load scenario (200% load)
+        # Formula: (volumetry * 2) * (test_duration_seconds / 60) + buffer
+        # With 60s test duration: (volumetry * 2) * 1 + 50% buffer
+        required_count = max(100, int(endpoint.expected_volumetry * 2 * 1.5))
+        logger.info(f"Calculating mock data count for {endpoint.endpoint_name}: "
+                   f"volumetry={endpoint.expected_volumetry}, required_count={required_count}")
+
         # Check if endpoint has custom data file
         for selected_ep in config.selected_endpoints:
             if (selected_ep.get("path") == endpoint.endpoint_path and
                 selected_ep.get("method") == endpoint.http_method):
 
-                if "data_file" in selected_ep:
+                # Only load from file if data_file has a real value (not None, not empty)
+                if selected_ep.get("data_file"):
                     # Load custom data (implement file loading)
                     return await self._load_test_data_file(selected_ep["data_file"])
                 elif selected_ep.get("use_mock_data", True):
                     # Generate mock data with the endpoint's schema
                     return await self.mock_generator.generate_mock_data(
-                        endpoint, endpoint.schema or {}, count=100
+                        endpoint, endpoint.schema or {}, count=required_count
                     )
 
         # Default: generate mock data with the endpoint's schema
-        return await self.mock_generator.generate_mock_data(endpoint, endpoint.schema or {}, count=100)
+        return await self.mock_generator.generate_mock_data(endpoint, endpoint.schema or {}, count=required_count)
     
     async def _load_test_data_file(self, file_path: str) -> List[Dict]:
         """Load test data from file."""

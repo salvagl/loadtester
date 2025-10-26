@@ -31,17 +31,17 @@ if [ "$(id -u)" = "0" ]; then
     usermod -u $HOST_UID appuser 2>/dev/null || true
     groupmod -g $HOST_GID appuser 2>/dev/null || true
 
-    # Change ownership of data directories to appuser
-    chown -R appuser:appuser /app/data
-    chown -R appuser:appuser /app/shared
-    chown -R appuser:appuser /app/k6_scripts
-    chown -R appuser:appuser /app/k6_results
+    # Change ownership of data directories to appuser (with error suppression for Windows I/O issues)
+    chown -R appuser:appuser /app/data 2>/dev/null || echo "Warning: Could not change ownership of /app/data (this is normal on Windows)"
+    chown -R appuser:appuser /app/shared 2>/dev/null || echo "Warning: Could not change ownership of /app/shared (this is normal on Windows)"
+    chown -R appuser:appuser /app/k6_scripts 2>/dev/null || echo "Warning: Could not change ownership of /app/k6_scripts (this is normal on Windows)"
+    chown -R appuser:appuser /app/k6_results 2>/dev/null || echo "Warning: Could not change ownership of /app/k6_results (this is normal on Windows)"
 
-    # Ensure directories are writable with more permissive permissions for volume mounting
-    chmod -R 775 /app/data
-    chmod -R 775 /app/shared
-    chmod -R 775 /app/k6_scripts
-    chmod -R 775 /app/k6_results
+    # Ensure directories are writable with more permissive permissions for volume mounting (with error suppression)
+    chmod -R 775 /app/data 2>/dev/null || echo "Warning: Could not change permissions of /app/data (this is normal on Windows)"
+    chmod -R 775 /app/shared 2>/dev/null || echo "Warning: Could not change permissions of /app/shared (this is normal on Windows)"
+    chmod -R 775 /app/k6_scripts 2>/dev/null || echo "Warning: Could not change permissions of /app/k6_scripts (this is normal on Windows)"
+    chmod -R 775 /app/k6_results 2>/dev/null || echo "Warning: Could not change permissions of /app/k6_results (this is normal on Windows)"
 
     # Special handling for database file to ensure it's created with correct permissions
     if [ ! -f /app/data/loadtester.db ]; then

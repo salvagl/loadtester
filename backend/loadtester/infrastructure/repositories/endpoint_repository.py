@@ -9,10 +9,11 @@ from typing import List, Optional
 
 from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from loadtester.domain.entities.domain_entities import Endpoint, AuthConfig, AuthType
+from loadtester.domain.entities.domain_entities import Endpoint, AuthConfig, AuthType, API
 from loadtester.domain.interfaces.domain_interfaces import EndpointRepositoryInterface
-from loadtester.infrastructure.database.database_models import EndpointModel
+from loadtester.infrastructure.database.database_models import EndpointModel, APIModel
 from loadtester.shared.exceptions.infrastructure_exceptions import DatabaseError, NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -43,15 +44,24 @@ class EndpointRepository(EndpointRepositoryInterface):
                 timeout_ms=endpoint.timeout_ms,
                 active=endpoint.active,
             )
-            
+
             self.session.add(endpoint_model)
             await self.session.commit()
-            await self.session.refresh(endpoint_model)
-            
+            await self.session.refresh(endpoint_model, attribute_names=['endpoint_id', 'created_at', 'updated_at'])
+
             logger.info(f"Created endpoint: {endpoint_model.http_method} {endpoint_model.endpoint_path}")
-            
+
+            # Reload with API relationship
+            stmt = (
+                select(EndpointModel)
+                .options(selectinload(EndpointModel.api))
+                .where(EndpointModel.endpoint_id == endpoint_model.endpoint_id)
+            )
+            result = await self.session.execute(stmt)
+            endpoint_model = result.scalar_one()
+
             return self._model_to_entity(endpoint_model)
-            
+
         except Exception as e:
             await self.session.rollback()
             logger.error(f"Error creating endpoint: {str(e)}")
@@ -60,16 +70,20 @@ class EndpointRepository(EndpointRepositoryInterface):
     async def get_by_id(self, endpoint_id: int) -> Optional[Endpoint]:
         """Get endpoint by ID."""
         try:
-            stmt = select(EndpointModel).where(EndpointModel.endpoint_id == endpoint_id)
-            
+            stmt = (
+                select(EndpointModel)
+                .options(selectinload(EndpointModel.api))
+                .where(EndpointModel.endpoint_id == endpoint_id)
+            )
+
             result = await self.session.execute(stmt)
             endpoint_model = result.scalar_one_or_none()
-            
+
             if not endpoint_model:
                 return None
-            
+
             return self._model_to_entity(endpoint_model)
-            
+
         except Exception as e:
             logger.error(f"Error getting endpoint by ID {endpoint_id}: {str(e)}")
             raise DatabaseError(f"Failed to get endpoint: {str(e)}")
@@ -79,15 +93,16 @@ class EndpointRepository(EndpointRepositoryInterface):
         try:
             stmt = (
                 select(EndpointModel)
+                .options(selectinload(EndpointModel.api))
                 .where(EndpointModel.api_id == api_id, EndpointModel.active == True)
                 .order_by(EndpointModel.endpoint_path, EndpointModel.http_method)
             )
-            
+
             result = await self.session.execute(stmt)
             endpoint_models = result.scalars().all()
-            
+
             return [self._model_to_entity(model) for model in endpoint_models]
-            
+
         except Exception as e:
             logger.error(f"Error getting endpoints for API {api_id}: {str(e)}")
             raise DatabaseError(f"Failed to get endpoints: {str(e)}")
@@ -97,21 +112,22 @@ class EndpointRepository(EndpointRepositoryInterface):
         try:
             stmt = (
                 select(EndpointModel)
+                .options(selectinload(EndpointModel.api))
                 .where(
                     EndpointModel.endpoint_path == path,
                     EndpointModel.http_method == method.upper(),
                     EndpointModel.active == True
                 )
             )
-            
+
             result = await self.session.execute(stmt)
             endpoint_model = result.scalar_one_or_none()
-            
+
             if not endpoint_model:
                 return None
-            
+
             return self._model_to_entity(endpoint_model)
-            
+
         except Exception as e:
             logger.error(f"Error getting endpoint {method} {path}: {str(e)}")
             raise DatabaseError(f"Failed to get endpoint: {str(e)}")
@@ -145,14 +161,23 @@ class EndpointRepository(EndpointRepositoryInterface):
             
             result = await self.session.execute(stmt)
             updated_model = result.scalar_one_or_none()
-            
+
             if not updated_model:
                 raise NotFoundError(f"Endpoint with ID {endpoint.endpoint_id} not found")
-            
+
             await self.session.commit()
-            
+
             logger.info(f"Updated endpoint: {updated_model.http_method} {updated_model.endpoint_path}")
-            
+
+            # Reload with API relationship to avoid lazy loading issues
+            stmt = (
+                select(EndpointModel)
+                .options(selectinload(EndpointModel.api))
+                .where(EndpointModel.endpoint_id == endpoint.endpoint_id)
+            )
+            result = await self.session.execute(stmt)
+            updated_model = result.scalar_one()
+
             return self._model_to_entity(updated_model)
             
         except Exception as e:
@@ -202,7 +227,7 @@ class EndpointRepository(EndpointRepositoryInterface):
                 )
             except (json.JSONDecodeError, ValueError) as e:
                 logger.warning(f"Error parsing auth config: {str(e)}")
-        
+
         # Parse headers config
         headers_config = None
         if model.headers_config:
@@ -210,7 +235,7 @@ class EndpointRepository(EndpointRepositoryInterface):
                 headers_config = json.loads(model.headers_config)
             except json.JSONDecodeError as e:
                 logger.warning(f"Error parsing headers config: {str(e)}")
-        
+
         # Parse payload template
         payload_template = None
         if model.payload_template:
@@ -226,6 +251,19 @@ class EndpointRepository(EndpointRepositoryInterface):
                 schema = json.loads(model.schema)
             except json.JSONDecodeError as e:
                 logger.warning(f"Error parsing schema: {str(e)}")
+
+        # Convert API model to entity if loaded
+        api_entity = None
+        if model.api:
+            api_entity = API(
+                api_id=model.api.api_id,
+                api_name=model.api.api_name,
+                base_url=model.api.base_url,
+                description=model.api.description,
+                created_at=model.api.created_at,
+                updated_at=model.api.updated_at,
+                active=model.api.active,
+            )
 
         return Endpoint(
             endpoint_id=model.endpoint_id,
@@ -244,6 +282,7 @@ class EndpointRepository(EndpointRepositoryInterface):
             created_at=model.created_at,
             updated_at=model.updated_at,
             active=model.active,
+            api=api_entity,  # Assign API entity
         )
     
     def _auth_config_to_dict(self, auth_config: Optional[AuthConfig]) -> Optional[dict]:

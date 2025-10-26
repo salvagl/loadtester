@@ -18,7 +18,10 @@
       "Bash(docker-compose start:*)",
       "Bash(docker logs:*)",
       "Bash(docker-compose:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(mkdir:*)",
+      "Read(//g/Mi unidad/PSU-IA/Q2/TF1/**)",
+      "Bash(docker ps:*)"
     ],
     "deny": [],
     "ask": []

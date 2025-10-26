@@ -92,10 +92,12 @@ class K6ScriptGeneratorService(K6ScriptGeneratorServiceInterface):
             if 'url =' in line.lower() or 'let url' in line.lower() or 'const url' in line.lower():
                 logger.info(f"[DEBUG] Template URL line {i}: {line.strip()}")
 
-        # Use AI to enhance and validate the script
-        enhanced_script = await self._enhance_script_with_ai(script_template, endpoint, scenario_config)
+        # CRITICAL: DO NOT use AI to enhance script - it modifies the testData
+        # The script template already has the correct testData from OAS schema
+        # AI enhancement would replace it with invented data
+        logger.info("Returning K6 script template without AI enhancement to preserve OAS-generated testData")
 
-        return enhanced_script
+        return script_template
     
     def _create_k6_script_template(
         self,
@@ -133,16 +135,23 @@ class K6ScriptGeneratorService(K6ScriptGeneratorServiceInterface):
         # Ensure timeout is also an integer
         timeout_ms = self._ensure_integer(getattr(endpoint, 'timeout_ms', 30000))
 
+        # Generate dynamic data helpers based on schema
+        data_generator_code = self._generate_dynamic_data_helpers(test_data)
+
         script = f"""
 import http from 'k6/http';
 import {{ check, sleep }} from 'k6';
-import {{ Rate }} from 'k6/metrics';
+import {{ Rate, Counter }} from 'k6/metrics';
 
 // Custom metrics
 const errorRate = new Rate('errors');
+const requestCounter = new Counter('requests_total');
 
-// Test data
-const testData = {json.dumps(test_data, indent=2)};
+// Global counter for unique values
+let globalCounter = 0;
+
+// Helper functions for dynamic data generation
+{data_generator_code}
 
 // Configuration
 export const options = {{
@@ -159,35 +168,39 @@ export const options = {{
 }};
 
 export default function() {{
-    // Select random test data
-    const data = testData[Math.floor(Math.random() * testData.length)];
-    
+    // Generate unique data for this iteration
+    globalCounter++;
+    const data = generateTestData();
+
+    // Count total requests
+    requestCounter.add(1);
+
     // Build URL
     let url = '{endpoint.endpoint_path}';
     {url_template}
-    
+
     // Prepare headers
     const headers = {{
         'Content-Type': 'application/json',
         {auth_headers}
     }};
-    
+
     // Prepare request parameters
     const params = {{
         headers: headers,
         timeout: '{timeout_ms}ms',
     }};
-    
+
     // Make request
     let response;
     {request_body}
-    
+
     // Check response
     const result = check(response, {{
         'status is 2xx': (r) => r.status >= 200 && r.status < 300,
         'response time < 1000ms': (r) => r.timings.duration < 1000,
     }});
-    
+
     // Record errors
     errorRate.add(!result);
 
@@ -197,7 +210,118 @@ export default function() {{
 }}
 """
         return script.strip()
-    
+
+    def _generate_dynamic_data_helpers(self, test_data: List[Dict]) -> str:
+        """Generate JavaScript helper functions for dynamic data generation.
+
+        This creates functions that generate unique data on each iteration,
+        preventing constraint violations from duplicate values.
+        """
+        if not test_data or len(test_data) == 0:
+            return """
+function generateTestData() {
+    return {
+        body: {},
+        path_params: {},
+        query_params: {}
+    };
+}
+"""
+
+        # Analyze the first record to understand the structure
+        sample = test_data[0] if test_data else {}
+
+        # Extract field types and names from the sample
+        body_fields = {}
+        if 'body' in sample and sample['body']:
+            body_fields = sample['body']
+
+        # Generate field generator functions
+        field_generators = []
+        for field_name, sample_value in body_fields.items():
+            field_lower = field_name.lower()
+
+            # Determine the type and generate appropriate code
+            if isinstance(sample_value, int):
+                # Integer fields - use random values
+                field_generators.append(f"        {field_name}: Math.floor(Math.random() * 10000) + 1")
+
+            elif isinstance(sample_value, bool):
+                field_generators.append(f"        {field_name}: Math.random() > 0.5")
+
+            elif isinstance(sample_value, str):
+                # String fields - add timestamp and counter for uniqueness
+                if 'email' in field_lower or 'mail' in field_lower:
+                    # Email: unique with timestamp + counter
+                    field_generators.append(
+                        f"        {field_name}: `user_${{Date.now()}}_${{globalCounter}}@test.com`"
+                    )
+                elif 'nombre' in field_lower or 'name' in field_lower or 'firstname' in field_lower:
+                    # Name: from pool + counter for uniqueness
+                    field_generators.append(
+                        f"        {field_name}: NOMBRES[globalCounter % NOMBRES.length] + '_' + globalCounter"
+                    )
+                elif 'apellido' in field_lower or 'surname' in field_lower or 'lastname' in field_lower:
+                    # Surname: from pool + counter for uniqueness
+                    field_generators.append(
+                        f"        {field_name}: APELLIDOS[globalCounter % APELLIDOS.length] + '_' + globalCounter"
+                    )
+                elif 'username' in field_lower or 'user' in field_lower:
+                    # Username: unique with timestamp
+                    field_generators.append(
+                        f"        {field_name}: `user_${{Date.now()}}_${{globalCounter}}`"
+                    )
+                elif 'dni' in field_lower or 'id' in field_lower or 'code' in field_lower or 'codigo' in field_lower:
+                    # ID/Code fields: unique with timestamp
+                    field_generators.append(
+                        f"        {field_name}: `${{Date.now()}}_${{globalCounter}}`"
+                    )
+                elif 'phone' in field_lower or 'telefono' in field_lower:
+                    # Phone: timestamp-based
+                    field_generators.append(
+                        f"        {field_name}: `+34${{600000000 + (globalCounter % 99999999)}}`"
+                    )
+                elif 'carrera' in field_lower or 'career' in field_lower:
+                    # Career: from pool
+                    field_generators.append(
+                        f"        {field_name}: CARRERAS[globalCounter % CARRERAS.length]"
+                    )
+                elif 'description' in field_lower or 'desc' in field_lower:
+                    # Description: generic text + counter
+                    field_generators.append(
+                        f"        {field_name}: `Description text for item ${{globalCounter}}`"
+                    )
+                else:
+                    # Generic string: add counter for uniqueness
+                    field_generators.append(
+                        f"        {field_name}: `{field_name}_${{Date.now()}}_${{globalCounter}}`"
+                    )
+            else:
+                # Unknown type: use JSON representation
+                field_generators.append(f"        {field_name}: {json.dumps(sample_value)}")
+
+        # Generate the complete helper code
+        helper_code = """
+// Data pools for realistic values
+const NOMBRES = ['Ana', 'Carlos', 'Maria', 'Jose', 'Laura', 'David', 'Sofia', 'Miguel', 'Elena', 'Pablo'];
+const APELLIDOS = ['Garcia', 'Martinez', 'Lopez', 'Gonzalez', 'Rodriguez', 'Fernandez', 'Sanchez', 'Perez', 'Martin', 'Gomez'];
+const CARRERAS = ['Ingenieria', 'Medicina', 'Derecho', 'Economia', 'Arquitectura', 'Psicologia', 'Matematicas', 'Fisica', 'Quimica', 'Biologia'];
+
+// Generate unique test data for each iteration
+function generateTestData() {
+    return {
+        body: {
+"""
+        helper_code += ",\n".join(field_generators)
+        helper_code += """
+        },
+        path_params: {},
+        query_params: {}
+    };
+}
+"""
+        return helper_code
+
     def _build_auth_headers(self, endpoint: Endpoint) -> str:
         """Build authentication headers for K6 script."""
         if not endpoint.auth_config:

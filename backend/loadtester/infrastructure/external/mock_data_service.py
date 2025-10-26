@@ -7,6 +7,7 @@ import json
 import logging
 from typing import Dict, List
 from uuid import uuid4
+import time
 
 from faker import Faker
 
@@ -21,10 +22,14 @@ logger = logging.getLogger(__name__)
 
 class MockDataGeneratorService(MockDataGeneratorServiceInterface):
     """Mock data generation service using AI and Faker."""
-    
+
     def __init__(self, ai_client: AIClientInterface):
         self.ai_client = ai_client
         self.faker = Faker()
+        # Track unique emails to avoid duplicates within same generation session
+        self._used_emails = set()
+        # Counter for ensuring email uniqueness across test runs
+        self._email_counter = 0
     
     async def generate_mock_data(
         self,
@@ -199,11 +204,25 @@ class MockDataGeneratorService(MockDataGeneratorServiceInterface):
     def _generate_faker_value(self, data_type: str, param_name: str = ""):
         """Generate value using Faker based on type and parameter name."""
         param_lower = param_name.lower()
-        
-        if data_type == "integer" or "id" in param_lower:
+
+        # Check name-related fields FIRST before checking data_type
+        if "apellido" in param_lower or "surname" in param_lower or "lastname" in param_lower:
+            return self.faker.last_name()
+        elif "nombre" in param_lower or "firstname" in param_lower:
+            return self.faker.first_name()
+        elif "name" in param_lower:
+            return self.faker.name()
+        elif data_type == "integer" or "id" in param_lower:
             return self.faker.random_int(min=1, max=10000)
         elif data_type == "email" or "email" in param_lower:
-            return self.faker.email()
+            # Generate unique email to avoid constraint violations
+            # Include timestamp and counter to ensure uniqueness across test runs
+            self._email_counter += 1
+            timestamp = int(time.time() * 1000) % 1000000  # Last 6 digits of timestamp in ms
+            username = self.faker.user_name()
+            email = f"{username}_{timestamp}_{self._email_counter}@{self.faker.domain_name()}"
+            self._used_emails.add(email)
+            return email
         elif data_type == "phone" or "phone" in param_lower:
             return self.faker.phone_number()
         elif data_type == "url" or "url" in param_lower:
@@ -212,8 +231,6 @@ class MockDataGeneratorService(MockDataGeneratorServiceInterface):
             return self.faker.date_between(start_date='-1y', end_date='today').isoformat()
         elif data_type == "datetime" or "time" in param_lower:
             return self.faker.date_time_between(start_date='-1y', end_date='now').isoformat()
-        elif "name" in param_lower:
-            return self.faker.name()
         elif "address" in param_lower:
             return self.faker.address()
         elif "company" in param_lower:
@@ -283,7 +300,8 @@ class MockDataGeneratorService(MockDataGeneratorServiceInterface):
 
         if prop_type == "string":
             if prop_format == "email":
-                return self.faker.email()
+                # Use unique email generation
+                return self._generate_faker_value("email", prop_name)
             elif prop_format == "date":
                 return self.faker.date().isoformat()
             elif prop_format == "date-time":
@@ -343,7 +361,7 @@ class MockDataGeneratorService(MockDataGeneratorServiceInterface):
             if endpoint.http_method.upper() in ["POST", "PUT", "PATCH"]:
                 record["body"] = {
                     "name": self.faker.name(),
-                    "email": self.faker.email(),
+                    "email": self._generate_faker_value("email", "email"),
                     "description": self.faker.text(max_nb_chars=100),
                     "value": self.faker.random_int(min=1, max=1000),
                     "active": self.faker.boolean(),

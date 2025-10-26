@@ -10,11 +10,11 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./shared/database:/app/data
-      - ./shared/data:/app/shared/data
-      - ./shared/reports:/app/shared/reports
-      - ./k6/scripts/generated:/app/k6_scripts
-      - ./k6/results/generated:/app/k6_results
+      - backend-data:/app/data
+      - shared-data:/app/shared/data
+      - reports-data:/app/shared/reports
+      - k6-scripts:/app/k6_scripts
+      - k6-results:/app/k6_results
     environment:
       - DATABASE_URL=sqlite:///data/loadtester.db
       - HOST_UID=${HOST_UID:-1000}
@@ -80,6 +80,25 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
+
+  # Demo Test API Service - Real FastAPI with SQLite
+  demo_test_api:
+    build:
+      context: ./demo-test-api
+      dockerfile: Dockerfile
+    container_name: demo-test-api
+    ports:
+      - "8020:8000"
+    volumes:
+      - ./demo-test-api/data:/app/data
+    networks:
+      - loadtester-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
   # K6 Load Testing Service
   # k6:
   #   image: grafana/k6:latest
@@ -109,39 +128,9 @@ networks:
     name: loadtester-network
 
 volumes:
-  # Persistent volume for SQLite database
-  database-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./shared/database
-  
-  # Shared volumes for data exchange
+  # All volumes as named volumes to avoid Windows I/O errors
+  backend-data:
   shared-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./shared/data
-  
   reports-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./shared/reports
-  
   k6-scripts:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./k6/scripts
-  
   k6-results:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./k6/results
