@@ -116,13 +116,25 @@ def render_sidebar():
     """Render application sidebar with navigation."""
     with st.sidebar:
         st.image("https://via.placeholder.com/200x80/1f77b4/white?text=LoadTester", width=200)
-        
+
+        # Initialize current_page in session state if not present
+        if 'current_page' not in st.session_state:
+            st.session_state.current_page = "Setup"
+
+        # Get default index based on current_page
+        pages = ["Setup", "Configure", "Execute", "Results", "History"]
+        default_index = pages.index(st.session_state.current_page) if st.session_state.current_page in pages else 0
+
+        # Use a dynamic key based on current_page to force re-render when programmatically changed
+        menu_key = f"main_menu_{st.session_state.current_page}"
+
         selected = option_menu(
             menu_title="Navigation",
-            options=["Setup", "Configure", "Execute", "Results", "History"],
+            options=pages,
             icons=["gear", "sliders", "play-circle", "bar-chart", "clock-history"],
             menu_icon="list",
-            default_index=0,
+            default_index=default_index,
+            key=menu_key,
             styles={
                 "container": {"padding": "0!important", "background-color": "#fafafa"},
                 "icon": {"color": "#1f77b4", "font-size": "18px"},
@@ -135,6 +147,10 @@ def render_sidebar():
                 "nav-link-selected": {"background-color": "#1f77b4"},
             }
         )
+
+        # Update current_page when user selects from menu
+        if selected != st.session_state.current_page:
+            st.session_state.current_page = selected
         
         st.markdown("---")
         
@@ -192,7 +208,7 @@ def render_setup_page():
 
         st.markdown('<div class="success-box">✅ OpenAPI specification loaded successfully!</div>',
                    unsafe_allow_html=True)
-        
+
         # Show API information
         if st.session_state.parsed_spec:
             info = st.session_state.parsed_spec.get('info', {})
@@ -440,20 +456,22 @@ def main():
     """Main application function."""
     initialize_session_state()
     render_header()
-    
-    # Render sidebar and get selected page
-    selected_page = render_sidebar()
-    
-    # Render selected page
-    if selected_page == "Setup":
+
+    # Render sidebar (which manages navigation state)
+    render_sidebar()
+
+    # Render selected page based on session state
+    current_page = st.session_state.get('current_page', 'Setup')
+
+    if current_page == "Setup":
         render_setup_page()
-    elif selected_page == "Configure":
+    elif current_page == "Configure":
         render_configure_page()
-    elif selected_page == "Execute":
+    elif current_page == "Execute":
         render_execute_page()
-    elif selected_page == "Results":
+    elif current_page == "Results":
         render_results_page()
-    elif selected_page == "History":
+    elif current_page == "History":
         render_history_page()
 
 if __name__ == "__main__":

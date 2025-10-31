@@ -43,6 +43,10 @@ class OpenAPIParserComponent:
             st.session_state.temp_spec_content = spec_content
             return self._process_specification(spec_content)
 
+        # Check if we have validated spec - use openapi_spec instead of temp
+        if st.session_state.get('validated_spec', False) and st.session_state.get('openapi_spec'):
+            return self._process_specification(st.session_state.openapi_spec)
+
         # Check if we have a pending validation from session state
         if hasattr(st.session_state, 'temp_spec_content') and st.session_state.temp_spec_content:
             return self._process_specification(st.session_state.temp_spec_content)
@@ -125,15 +129,15 @@ class OpenAPIParserComponent:
         try:
             # First, try to parse locally to give immediate feedback
             local_parsed = self._parse_spec_locally(spec_content)
-            
+
             if not local_parsed:
                 return None
-            
+
             # Show basic info
             with st.expander("📋 Specification Preview", expanded=True):
                 info = local_parsed.get('info', {})
                 col1, col2, col3 = st.columns(3)
-                
+
                 with col1:
                     st.write(f"**Title:** {info.get('title', 'N/A')}")
                 with col2:
@@ -141,30 +145,45 @@ class OpenAPIParserComponent:
                 with col3:
                     paths_count = len(local_parsed.get('paths', {}))
                     st.write(f"**Paths:** {paths_count}")
-                
+
                 if info.get('description'):
                     st.write(f"**Description:** {info['description']}")
-            
-            # Validate with backend
-            if st.button("✅ Validate & Parse Specification", type="primary"):
-                result = self._validate_with_backend(spec_content, local_parsed)
-                if result and result.get('success'):
-                    # Store all the result data in session state before rerun
-                    st.session_state.openapi_spec = result['spec_content']
-                    st.session_state.parsed_spec = result['parsed_spec']
-                    st.session_state.available_endpoints = result['endpoints']
-                    st.session_state.validated_spec = True
 
-                    # Clear temp content
-                    if hasattr(st.session_state, 'temp_spec_content'):
-                        del st.session_state.temp_spec_content
+            # Show validate button (and next step button if already validated)
+            if st.session_state.get('validated_spec', False):
+                # Already validated - show both buttons side by side
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    if st.button("✅ Validate & Parse Specification", type="secondary", use_container_width=True, key="validate_again"):
+                        result = self._validate_with_backend(spec_content, local_parsed)
+                        if result and result.get('success'):
+                            # Store all the result data in session state before rerun
+                            st.session_state.openapi_spec = result['spec_content']
+                            st.session_state.parsed_spec = result['parsed_spec']
+                            st.session_state.available_endpoints = result['endpoints']
+                            st.session_state.validated_spec = True
+                            st.rerun()
+                        return result
+                with col2:
+                    if st.button("➡️ Next step: configure endpoints", type="primary", use_container_width=True, key="next_from_parser"):
+                        st.session_state.current_page = "Configure"
+                        st.rerun()
+            else:
+                # Not yet validated - show only validate button
+                if st.button("✅ Validate & Parse Specification", type="primary"):
+                    result = self._validate_with_backend(spec_content, local_parsed)
+                    if result and result.get('success'):
+                        # Store all the result data in session state before rerun
+                        st.session_state.openapi_spec = result['spec_content']
+                        st.session_state.parsed_spec = result['parsed_spec']
+                        st.session_state.available_endpoints = result['endpoints']
+                        st.session_state.validated_spec = True
+                        st.rerun()
+                    return result
 
-                    st.rerun()
-                return result
-        
         except Exception as e:
             st.error(f"Error processing specification: {str(e)}")
-        
+
         return None
     
     def _parse_spec_locally(self, spec_content: str) -> Optional[Dict]:
@@ -204,9 +223,9 @@ class OpenAPIParserComponent:
                         for error in validation_result['errors']:
                             st.error(f"- {error}")
                     return None
-                
+
                 st.success("✅ Specification is valid!")
-                
+
                 # Extract endpoints from local parsing as fallback
                 endpoints = self._extract_endpoints_locally(local_parsed)
 
