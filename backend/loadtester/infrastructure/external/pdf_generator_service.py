@@ -67,29 +67,117 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
             story = []
             styles = getSampleStyleSheet()
             
-            # Add title
+            # First Page - Title and Date
             title_style = ParagraphStyle(
                 'CustomTitle',
                 parent=styles['Heading1'],
-                fontSize=24,
-                spaceAfter=30,
+                fontSize=28,
+                alignment=1,  # Center alignment
+                spaceAfter=20,
                 textColor=colors.HexColor('#1f77b4')
             )
-            
+
+            date_style = ParagraphStyle(
+                'DateStyle',
+                parent=styles['Normal'],
+                fontSize=14,
+                alignment=1,  # Center alignment
+                textColor=colors.grey
+            )
+
+            # Add vertical spacing to center content
+            story.append(Spacer(1, 2.5*inch))
             story.append(Paragraph(content.get('title', 'LoadTester Report'), title_style))
-            story.append(Spacer(1, 12))
+            story.append(Spacer(1, 20))
+
+            # Add execution date
+            execution_date = content.get('test_configuration', {}).get('created_at', 'N/A')
+            story.append(Paragraph(f"Fecha de ejecución: {execution_date}", date_style))
+            story.append(PageBreak())
+
+            # Second Page - Table of Contents
+            story.append(Paragraph("Índice", styles['Heading1']))
+            story.append(Spacer(1, 20))
+
+            # Create TOC styles
+            toc_level1_style = ParagraphStyle(
+                'TOCLevel1',
+                parent=styles['Normal'],
+                fontSize=11,
+                fontName='Helvetica-Bold',
+                leftIndent=0,
+                spaceAfter=3
+            )
+            toc_level2_style = ParagraphStyle(
+                'TOCLevel2',
+                parent=styles['Normal'],
+                fontSize=10,
+                leftIndent=15,
+                spaceAfter=2
+            )
+
+            # Build TOC data as a table with two columns: [Title, Page]
+            toc_data = []
+
+            # Note: Page numbers are approximate based on content structure
+            # Page 1: Cover (Title + Date)
+            # Page 2: TOC (this page)
+            # Page 3+: Content starts
+
+            toc_data.append([Paragraph("1. Introducción", toc_level1_style), "3"])
+            toc_data.append([Paragraph("    • Acerca de este informe", toc_level2_style), "3"])
+            toc_data.append([Paragraph("    • Generación de Escenarios de Carga", toc_level2_style), "3"])
+            toc_data.append([Paragraph("    • Cómo se Calcula la Carga", toc_level2_style), "3"])
+            toc_data.append([Paragraph("    • Interpretación de Métricas", toc_level2_style), "4"])
+
+            toc_data.append([Paragraph("2. Resumen Ejecutivo", toc_level1_style), "5"])
+            toc_data.append([Paragraph("    • Información general", toc_level2_style), "5"])
+            toc_data.append([Paragraph("    • Configuración de Prueba", toc_level2_style), "5"])
+            toc_data.append([Paragraph("    • Análisis de Degradación del Rendimiento", toc_level2_style), "6"])
+            toc_data.append([Paragraph("    • Recomendaciones de Rendimiento y Elementos de Acción", toc_level2_style), "6"])
+
+            toc_data.append([Paragraph("3. Resultados Detallados por Endpoint", toc_level1_style), "7"])
+
+            # Add dynamic endpoint entries if available
+            if 'endpoint_results' in content and content['endpoint_results']:
+                page_num = 7
+                for i, endpoint_info in enumerate(content['endpoint_results']):
+                    endpoint_text = f"    • {endpoint_info['method']} {endpoint_info['path']}"
+                    toc_data.append([Paragraph(endpoint_text, toc_level2_style), str(page_num + i)])
+
+            # Create TOC table with dots leader
+            toc_table = Table(toc_data, colWidths=[5.5*inch, 0.5*inch])
+            toc_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+                ('FONTSIZE', (1, 0), (1, -1), 10),
+                ('TEXTCOLOR', (1, 0), (1, -1), colors.grey),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 0), (-1, -1), 2),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ]))
+
+            story.append(toc_table)
+            story.append(PageBreak())
 
             # Add introduction section with interpretation guide
             story.append(Paragraph("1. Introducción", styles['Heading2']))
 
-            introduction_text = """
-            <b>Acerca de este informe:</b><br/><br/>
+            # Acerca de este informe
+            story.append(Paragraph("Acerca de este informe", styles['Heading3']))
+            story.append(Paragraph(
+                "Este informe presenta los resultados de las pruebas de carga progresivas realizadas sobre los endpoints seleccionados. "
+                "Las pruebas están diseñadas para identificar el punto de degradación del rendimiento del sistema bajo cargas incrementales.",
+                styles['Normal']
+            ))
+            story.append(Spacer(1, 12))
 
-            Este informe presenta los resultados de las pruebas de carga progresivas realizadas sobre los endpoints seleccionados.
-            Las pruebas están diseñadas para identificar el punto de degradación del rendimiento del sistema bajo cargas incrementales.<br/><br/>
-
-            <b>Generación de Escenarios de Carga:</b><br/><br/>
-
+            # Generación de Escenarios de Carga
+            story.append(Paragraph("Generación de Escenarios de Carga", styles['Heading3']))
+            scenarios_text = """
             Para cada endpoint, se generan 6 escenarios de prueba con carga progresiva siguiendo un patrón estándar:
             <br/>• <b>Escenario WARM-UP (25% carga):</b> Inicializa conexiones, caches y recursos del sistema
             <br/>• <b>Escenario 1 (50% carga):</b> Carga reducida - Verifica funcionamiento básico
@@ -107,10 +195,14 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
             <br/>• Escenario 5: 20 usuarios, 200 req/min<br/><br/>
 
             Las pruebas se ejecutan <b>secuencialmente</b> (un endpoint después del otro) para aislar problemas
-            y evitar interferencias entre tests.<br/><br/>
+            y evitar interferencias entre tests.
+            """
+            story.append(Paragraph(scenarios_text, styles['Normal']))
+            story.append(Spacer(1, 12))
 
-            <b>Cómo se Calcula la Carga:</b><br/><br/>
-
+            # Cómo se Calcula la Carga
+            story.append(Paragraph("Cómo se Calcula la Carga", styles['Heading3']))
+            load_calc_text = """
             La prueba utiliza dos parámetros clave que trabajan conjuntamente:
             <br/>• <b>Usuarios Concurrentes:</b> Número de usuarios virtuales (VUs) ejecutando peticiones simultáneamente
             <br/>• <b>Volumetría (req/min):</b> Total de peticiones por minuto de TODOS los usuarios combinados<br/><br/>
@@ -128,10 +220,14 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
             <br/>• Cada usuario hace 1 petición cada 6 segundos
             <br/>• 5 usuarios × 10 peticiones/minuto = 50 peticiones/minuto<br/><br/>
 
-            Esto garantiza que la carga total del sistema coincida exactamente con la volumetría configurada.<br/><br/>
+            Esto garantiza que la carga total del sistema coincida exactamente con la volumetría configurada.
+            """
+            story.append(Paragraph(load_calc_text, styles['Normal']))
+            story.append(Spacer(1, 12))
 
-            <b>Interpretación de Métricas:</b><br/><br/>
-
+            # Interpretación de Métricas
+            story.append(Paragraph("Interpretación de Métricas", styles['Heading3']))
+            metrics_text = """
             • <b>Percentil 95 (p95):</b> Indica que el 95% de las peticiones fueron procesadas en un tiempo igual o menor al valor mostrado.
             Es una métrica más representativa del rendimiento real que el promedio, ya que excluye outliers extremos pero captura
             la experiencia de la gran mayoría de los usuarios.<br/><br/>
@@ -150,22 +246,23 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
             • <b>Throughput (Peticiones/seg):</b> Capacidad de procesamiento del sistema. Una caída en throughput
             bajo carga creciente indica saturación del sistema.
             """
-
-            story.append(Paragraph(introduction_text, styles['Normal']))
+            story.append(Paragraph(metrics_text, styles['Normal']))
             story.append(Spacer(1, 12))
             story.append(PageBreak())
 
             # Add executive summary
             if 'executive_summary' in content:
                 story.append(Paragraph("2. Resumen Ejecutivo", styles['Heading2']))
-                # Remove markdown formatting (**, ##, etc.) from AI-generated text
-                clean_summary = content['executive_summary'].replace('**', '').replace('##', '')
+                story.append(Spacer(1, 6))
+                story.append(Paragraph("Información general", styles['Heading3']))
+                # Remove any markdown formatting that AI might add despite instructions
+                clean_summary = content['executive_summary'].replace('**', '').replace('##', '').strip()
                 story.append(Paragraph(clean_summary, styles['Normal']))
                 story.append(Spacer(1, 12))
-            
+
             # Add test configuration
             if 'test_configuration' in content:
-                story.append(Paragraph("Configuración de Prueba", styles['Heading2']))
+                story.append(Paragraph("Configuración de Prueba", styles['Heading3']))
                 config_data = content['test_configuration']
 
                 # Format duration properly
@@ -204,7 +301,7 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
             # Degradation Analysis Section
             if 'degradation_analysis' in content:
                 story.append(PageBreak())
-                story.append(Paragraph("Análisis de Degradación del Rendimiento", styles['Heading2']))
+                story.append(Paragraph("Análisis de Degradación del Rendimiento", styles['Heading3']))
                 degradation_data = content['degradation_analysis']
 
                 if degradation_data:
@@ -221,7 +318,7 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
 
             # Performance Recommendations Section (Additional value)
             if 'recommendations' in content:
-                story.append(Paragraph("Recomendaciones de Rendimiento y Elementos de Acción", styles['Heading2']))
+                story.append(Paragraph("Recomendaciones de Rendimiento y Elementos de Acción", styles['Heading3']))
                 recommendations = content['recommendations']
 
                 if recommendations:
@@ -658,6 +755,8 @@ class ReportGeneratorService(ReportGeneratorServiceInterface):
 
             IMPORTANTE:
             - Escribe SOLO en castellano
+            - NO incluyas ningún título, encabezado o subtítulo (como "Resumen Ejecutivo", etc.)
+            - Comienza directamente con el contenido del resumen
             - NO uses formato markdown (nada de ##, **, etc.)
             - Enfócate en aspectos empresariales, no técnicos
             - Si no hay datos (total_requests = 0), indica que no se pudo generar carga y recomienda revisar la configuración

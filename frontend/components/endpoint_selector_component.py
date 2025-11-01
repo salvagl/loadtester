@@ -166,7 +166,7 @@ class EndpointSelectorComponent:
         # Advanced configuration
         with st.expander("⚙️ Advanced Settings"):
             col1, col2 = st.columns(2)
-            
+
             with col1:
                 timeout_ms = st.number_input(
                     "Timeout (ms):",
@@ -177,7 +177,7 @@ class EndpointSelectorComponent:
                     key=f"timeout_{endpoint_key}",
                     help="Request timeout in milliseconds"
                 )
-            
+
             with col2:
                 test_duration = st.number_input(
                     "Test Duration (seconds):",
@@ -188,7 +188,27 @@ class EndpointSelectorComponent:
                     key=f"duration_{endpoint_key}",
                     help="Duration for each test scenario"
                 )
-        
+
+        # Scenario explanation (100% target load)
+        if expected_volumetry > 0 and expected_concurrent_users > 0:
+            st.markdown("---")
+            st.markdown("📊 **Configuración del escenario (carga objetivo 100%):**")
+
+            # Calculate metrics
+            sleep_time = (expected_concurrent_users * 60) / expected_volumetry if expected_volumetry > 0 else 0
+            requests_per_user = expected_volumetry / expected_concurrent_users if expected_concurrent_users > 0 else 0
+            total_requests = expected_volumetry  # req/min for 60 seconds = total requests
+
+            info_text = f"""
+            • **Duración:** {test_duration} segundos
+            • **Usuarios concurrentes:** {expected_concurrent_users}
+            • **Volumetría objetivo total:** {expected_volumetry} req/min
+            • **Peticiones por usuario:** ~{requests_per_user:.0f} (1 cada {sleep_time:.1f} seg)
+            • **Total estimado:** ~{total_requests:.0f} peticiones
+            """
+            st.markdown(info_text)
+            st.markdown("---")
+
         # Authentication configuration
         auth_config = self._render_auth_configuration(endpoint_key)
         

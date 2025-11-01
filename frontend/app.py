@@ -297,12 +297,68 @@ def render_execute_page():
         st.metric("Total Req/Min", total_volumetry)
     
     # Configuration summary
-    with st.expander("Configuration Details"):
+    with st.expander("Configuration Details", expanded=True):
         for i, endpoint in enumerate(st.session_state.selected_endpoints):
             st.write(f"**{endpoint['method'].upper()} {endpoint['path']}**")
-            st.write(f"- Expected Users: {endpoint.get('expected_concurrent_users', 'N/A')}")
-            st.write(f"- Expected Volumetry: {endpoint.get('expected_volumetry', 'N/A')} req/min")
+
+            # Get base configuration
+            users = endpoint.get('expected_concurrent_users', 10)
+            volumetry = endpoint.get('expected_volumetry', 100)
+            duration = endpoint.get('test_duration', 60)
+
+            # Calculate scenarios (WARM-UP + 5 scenarios)
+            scenarios_config = [
+                ("WARM-UP", 0.25),
+                ("Escenario 1", 0.50),
+                ("Escenario 2", 0.75),
+                ("Escenario 3", 1.00),
+                ("Escenario 4", 1.50),
+                ("Escenario 5", 2.00)
+            ]
+
+            # Create table data
+            table_data = {
+                "Métrica": [
+                    "Duración",
+                    "Usuarios concurrentes",
+                    "Volumetría objetivo",
+                    "Peticiones/usuario",
+                    "Total peticiones"
+                ]
+            }
+
+            for scenario_name, multiplier in scenarios_config:
+                scenario_users = int(users * multiplier)
+                scenario_volumetry = int(volumetry * multiplier)
+
+                # Calculate sleep time between requests
+                sleep_time = (scenario_users * 60) / scenario_volumetry if scenario_volumetry > 0 else 0
+
+                # Calculate requests per user during the test duration
+                # Each user makes 1 request every sleep_time seconds
+                requests_per_user = int(duration / sleep_time) if sleep_time > 0 else 0
+
+                # Total requests for the entire scenario
+                total_requests = int(scenario_volumetry * (duration / 60))
+
+                # Add star for 100% scenario
+                col_name = f"{scenario_name}\n({int(multiplier*100)}%)"
+                if multiplier == 1.0:
+                    col_name += " ⭐"
+
+                table_data[col_name] = [
+                    f"{duration}s",
+                    str(scenario_users),
+                    f"{scenario_volumetry} r/min",
+                    f"~{requests_per_user}\n(cada {sleep_time:.1f}s)",
+                    f"~{total_requests}"
+                ]
+
+            df = pd.DataFrame(table_data)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+
             st.write(f"- Timeout: {endpoint.get('timeout_ms', 30000)} ms")
+
             if i < len(st.session_state.selected_endpoints) - 1:
                 st.write("---")
     
