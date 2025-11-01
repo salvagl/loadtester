@@ -265,9 +265,14 @@ def render_configure_page():
         
         if test_config:
             st.session_state.test_configuration = test_config
-            
-            st.markdown('<div class="success-box">✅ Test configuration completed!</div>', 
+
+            st.markdown('<div class="success-box">✅ Test configuration completed!</div>',
                        unsafe_allow_html=True)
+
+            # Show "Go to execute" button when at least 1 endpoint is selected
+            if st.button("➡️ Go to execute", type="primary", use_container_width=True, key="go_to_execute"):
+                st.session_state.current_page = "Execute"
+                st.rerun()
 
 def render_execute_page():
     """Render test execution page."""
