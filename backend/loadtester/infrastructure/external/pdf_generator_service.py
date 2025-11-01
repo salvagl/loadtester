@@ -158,7 +158,9 @@ class PDFGeneratorService(PDFGeneratorServiceInterface):
             # Add executive summary
             if 'executive_summary' in content:
                 story.append(Paragraph("2. Resumen Ejecutivo", styles['Heading2']))
-                story.append(Paragraph(content['executive_summary'], styles['Normal']))
+                # Remove markdown formatting (**, ##, etc.) from AI-generated text
+                clean_summary = content['executive_summary'].replace('**', '').replace('##', '')
+                story.append(Paragraph(clean_summary, styles['Normal']))
                 story.append(Spacer(1, 12))
             
             # Add test configuration
