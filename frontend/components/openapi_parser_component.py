@@ -74,14 +74,21 @@ class OpenAPIParserComponent:
             placeholder="https://api.example.com/openapi.json",
             help="URL should return a valid OpenAPI 3.0+ specification"
         )
-        
+
+        # Show demo APIs info
+        st.info(
+            "**APIs de demostración disponibles:**\n\n"
+            "• **API Real:** `http://host.docker.internal:8020/openapi.json`\n\n"
+            "• **API Mock (fake):** `http://host.docker.internal:8010/openapi.json`"
+        )
+
         if url and url.strip():
             if validators.url(url):
                 if st.button("🔄 Fetch Specification", type="secondary"):
                     return self._fetch_from_url(url)
             else:
                 st.error("Please enter a valid URL")
-        
+
         return None
     
     def _render_file_upload(self) -> Optional[str]:

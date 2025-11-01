@@ -115,7 +115,14 @@ def render_header():
 def render_sidebar():
     """Render application sidebar with navigation."""
     with st.sidebar:
-        st.image("https://via.placeholder.com/200x80/1f77b4/white?text=LoadTester", width=200)
+        st.markdown(
+            """
+            <div style="background-color: #1f77b4; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 20px;">
+                <h2 style="color: white; margin: 0; font-size: 24px;">🚀 LoadTester</h2>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
         # Initialize current_page in session state if not present
         if 'current_page' not in st.session_state:
