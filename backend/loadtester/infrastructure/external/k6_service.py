@@ -236,6 +236,16 @@ function generateTestData() {
         if 'body' in sample and sample['body']:
             body_fields = sample['body']
 
+        # Extract path_params from sample
+        path_params = {}
+        if 'path_params' in sample and sample['path_params']:
+            path_params = sample['path_params']
+
+        # Extract query_params from sample
+        query_params = {}
+        if 'query_params' in sample and sample['query_params']:
+            query_params = sample['query_params']
+
         # Generate field generator functions
         field_generators = []
         for field_name, sample_value in body_fields.items():
@@ -300,6 +310,37 @@ function generateTestData() {
                 # Unknown type: use JSON representation
                 field_generators.append(f"        {field_name}: {json.dumps(sample_value)}")
 
+        # Generate path_params generators
+        path_param_generators = []
+        for param_name, sample_value in path_params.items():
+            param_lower = param_name.lower()
+
+            # For path params, we need to generate appropriate values based on type
+            if isinstance(sample_value, int):
+                # Integer path params - use globalCounter for uniqueness
+                path_param_generators.append(f"        {param_name}: globalCounter")
+            elif isinstance(sample_value, str):
+                # String path params - use counter-based values
+                if 'id' in param_lower or 'code' in param_lower or 'key' in param_lower:
+                    path_param_generators.append(f"        {param_name}: globalCounter")
+                else:
+                    path_param_generators.append(f"        {param_name}: `{param_name}_${{globalCounter}}`")
+            else:
+                # Default: use globalCounter
+                path_param_generators.append(f"        {param_name}: globalCounter")
+
+        # Generate query_params generators
+        query_param_generators = []
+        for param_name, sample_value in query_params.items():
+            if isinstance(sample_value, int):
+                query_param_generators.append(f"        {param_name}: Math.floor(Math.random() * 100) + 1")
+            elif isinstance(sample_value, bool):
+                query_param_generators.append(f"        {param_name}: Math.random() > 0.5")
+            elif isinstance(sample_value, str):
+                query_param_generators.append(f"        {param_name}: `{param_name}_${{globalCounter}}`")
+            else:
+                query_param_generators.append(f"        {param_name}: {json.dumps(sample_value)}")
+
         # Generate the complete helper code
         helper_code = """
 // Data pools for realistic values
@@ -315,8 +356,18 @@ function generateTestData() {
         helper_code += ",\n".join(field_generators)
         helper_code += """
         },
-        path_params: {},
-        query_params: {}
+        path_params: {
+"""
+        if path_param_generators:
+            helper_code += ",\n".join(path_param_generators)
+            helper_code += "\n"
+        helper_code += """        },
+        query_params: {
+"""
+        if query_param_generators:
+            helper_code += ",\n".join(query_param_generators)
+            helper_code += "\n"
+        helper_code += """        }
     };
 }
 """
