@@ -29,12 +29,22 @@ source ../.venv/Scripts/activate
 ```bash
 # Una vez activado el venv, deberías ver (.venv) en el prompt
 
-# Instalar dependencias principales (puede tomar varios minutos)
+# Actualizar pip primero
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+
+# Instalar dependencias principales (puede tomar varios minutos)
+# Si obtienes errores SSL, usa estas opciones:
+python -m pip install -r requirements.txt --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org
+
+# O si el anterior falla, instala las dependencias mínimas necesarias para tests:
+python -m pip install sqlalchemy aiosqlite faker pydantic pytest pytest-asyncio pytest-cov pytest-mock --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org
 ```
 
 **Nota:** Esta instalación puede tomar 5-10 minutos dependiendo de tu conexión.
+
+**Si hay errores SSL:**
+- Los flags `--trusted-host` evitan problemas de certificados SSL
+- Alternativamente, instala solo las dependencias mínimas (segunda opción)
 
 ### Paso 4: Instalar dependencias de testing
 
@@ -95,21 +105,33 @@ tests/test_infrastructure_validation.py::test_infrastructure_summary PASSED     
 
 ## Comandos Rápidos (Resumen)
 
-```bash
-# Desde el directorio raíz del proyecto
-cd "g:/Mi unidad/PSU-IA/Q2/TF1/src/backend"
+### Opción 1: Instalación Completa (Recomendada)
 
-# Activar venv
+```bash
+cd "g:/Mi unidad/PSU-IA/Q2/TF1/src/backend"
 source ../.venv/Scripts/activate
 
-# Instalar todo
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m pip install -r requirements-test.txt
+python -m pip install -r requirements.txt --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org
+python -m pip install -r requirements-test.txt --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org
 
-# Validar
 python -m pytest tests/test_infrastructure_validation.py -v
 ```
+
+### Opción 2: Solo Dependencias Mínimas para Tests (Rápida)
+
+```bash
+cd "g:/Mi unidad/PSU-IA/Q2/TF1/src/backend"
+source ../.venv/Scripts/activate
+
+# Solo las dependencias necesarias para ejecutar tests de validación
+python -m pip install --upgrade pip
+python -m pip install sqlalchemy aiosqlite faker pydantic pytest pytest-asyncio pytest-cov pytest-mock --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org
+
+python -m pytest tests/test_infrastructure_validation.py -v
+```
+
+**Nota:** La Opción 2 es más rápida (1-2 minutos) y suficiente para validar FASE 1.
 
 ---
 

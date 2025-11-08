@@ -18,7 +18,8 @@ from tests.fixtures.openapi_specs import (
 )
 from tests.fixtures.mock_data import (
     create_mock_api, create_mock_endpoint, create_mock_test_scenario,
-    create_mock_test_result, create_mock_job, create_mock_k6_results
+    create_mock_test_result, create_mock_job, create_mock_k6_results,
+    create_mock_incremental_scenarios
 )
 
 

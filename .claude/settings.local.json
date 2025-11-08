@@ -21,7 +21,10 @@
       "Bash(find:*)",
       "Bash(mkdir:*)",
       "Read(//g/Mi unidad/PSU-IA/Q2/TF1/**)",
-      "Bash(docker ps:*)"
+      "Bash(docker ps:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Read(//g//**)"
     ],
     "deny": [],
     "ask": []

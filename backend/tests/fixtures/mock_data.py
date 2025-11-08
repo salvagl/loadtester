@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from loadtester.domain.entities.domain_entities import (
-    API, AuthConfig, Endpoint, ExecutionStatus, Job, JobStatus,
+    API, AuthConfig, AuthType, Endpoint, ExecutionStatus, Job, JobStatus,
     TestExecution, TestResult, TestScenario
 )
 
@@ -222,8 +222,14 @@ def create_mock_test_result(
     **kwargs
 ) -> TestResult:
     """Create a mock TestResult entity for testing."""
-    failed_requests = int(total_requests * (100 - success_rate_percent) / 100)
-    successful_requests = total_requests - failed_requests
+    # Handle None success_rate_percent
+    if success_rate_percent is not None:
+        failed_requests = int(total_requests * (100 - success_rate_percent) / 100)
+        successful_requests = total_requests - failed_requests
+    else:
+        # If success rate is None, set reasonable defaults
+        failed_requests = 0
+        successful_requests = total_requests
 
     return TestResult(
         result_id=result_id,
@@ -292,7 +298,7 @@ def create_mock_job(
 def create_mock_bearer_auth() -> AuthConfig:
     """Create a mock Bearer token auth config."""
     return AuthConfig(
-        auth_type="bearer_token",
+        auth_type=AuthType.BEARER_TOKEN,
         token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.token"
     )
 
@@ -300,7 +306,7 @@ def create_mock_bearer_auth() -> AuthConfig:
 def create_mock_api_key_auth() -> AuthConfig:
     """Create a mock API key auth config."""
     return AuthConfig(
-        auth_type="api_key",
+        auth_type=AuthType.API_KEY,
         api_key="sk-test-1234567890",
         header_name="X-API-Key"
     )
