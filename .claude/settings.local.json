@@ -24,7 +24,9 @@
       "Bash(docker ps:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Read(//g//**)"
+      "Read(//g//**)",
+      "Bash(cd:*)",
+      "Bash(source ../.venv/Scripts/activate)"
     ],
     "deny": [],
     "ask": []
