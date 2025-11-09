@@ -41,9 +41,7 @@ async def test_complete_scenario_generation_flow(db_session, mock_ai_client):
     created_api = await api_repo.create(api)
 
     endpoint = create_mock_endpoint_post(
-        api_id=created_api.api_id,
-        endpoint_path="/users",
-        http_method="POST"
+        api_id=created_api.api_id
     )
     created_endpoint = await endpoint_repo.create(endpoint)
 
@@ -68,7 +66,7 @@ async def test_complete_scenario_generation_flow(db_session, mock_ai_client):
 
     mock_data = await mock_generator.generate_mock_data(
         endpoint=created_endpoint,
-        endpoint_schema=endpoint_schema,
+        schema=endpoint_schema,
         count=100
     )
 
@@ -165,7 +163,7 @@ async def test_scenario_generation_with_custom_data(db_session, mock_ai_client):
 
     mock_data = await mock_generator.generate_mock_data(
         endpoint=created_endpoint,
-        endpoint_schema=custom_schema,
+        schema=custom_schema,
         count=50
     )
 
@@ -270,7 +268,7 @@ async def test_scenario_mock_data_sufficient_count(db_session, mock_ai_client):
     # Generate 200% of target (for 200% scenario)
     mock_data = await mock_generator.generate_mock_data(
         endpoint=created_endpoint,
-        endpoint_schema=schema,
+        schema=schema,
         count=target_volumetry * 2
     )
 
@@ -323,7 +321,7 @@ async def test_scenario_data_uniqueness(db_session, mock_ai_client):
     # Generate 50 records
     mock_data = await mock_generator.generate_mock_data(
         endpoint=endpoint,
-        endpoint_schema=schema,
+        schema=schema,
         count=50
     )
 
